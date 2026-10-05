@@ -1,0 +1,20 @@
+{
+  "name": "@tesor_gp/e2e",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Playwright end-to-end scenarios against a local Hardhat chain, a temporary database and the real services",
+  "scripts": {
+    "test:e2e": "playwright test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@tesor_gp/blockchain": "*",
+    "@tesor_gp/shared": "*",
+    "ethers": "^6.17.0",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.0",
+    "@types/pg": "^8.11.10"
+  }
+}

@@ -1,0 +1,35 @@
+import { Link } from 'react-router-dom';
+import type { VideoDto } from '@tesor_gp/shared';
+import { formatDuration, formatViews, priceLabel, moneyTitle, timeAgo } from '../lib/format';
+
+export function VideoCard({ video, progress }: { video: VideoDto; progress?: number | undefined }): JSX.Element {
+  return (
+    <article className="video-card">
+      <Link to={`/watch/${video.id}`} className="thumb-link" aria-label={`Watch ${video.title}`}>
+        <div className="thumb">
+          {video.thumbnailUrl ? <img src={video.thumbnailUrl} alt="" loading="lazy" decoding="async" /> : <div className="thumb-fallback" aria-hidden="true" />}
+          {video.durationSeconds > 0 ? <span className="badge duration">{formatDuration(video.durationSeconds)}</span> : null}
+          {progress !== undefined && video.durationSeconds > 0 ? (
+            <span className="progress-bar" aria-hidden="true">
+              <span style={{ width: `${Math.min(100, Math.round((progress / video.durationSeconds) * 100))}%` }} />
+            </span>
+          ) : null}
+        </div>
+      </Link>
+      <div className="video-meta">
+        <h3 className="video-title">
+          <Link to={`/watch/${video.id}`}>{video.title}</Link>
+        </h3>
+        <p className="muted small">
+          <Link to={`/channel/${video.creator.id}`}>{video.creator.channelName}</Link>
+        </p>
+        <p className="muted small">
+          {formatViews(video.viewsCount)} · {timeAgo(video.createdAt)}
+        </p>
+        <p className="rate" title={moneyTitle(video.priceWei)}>
+          {priceLabel(video.priceWei)}{video.accessUntil ? ' · unlocked' : ''}
+        </p>
+      </div>
+    </article>
+  );
+}

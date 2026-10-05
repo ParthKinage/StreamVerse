@@ -1,0 +1,66 @@
+/* Deploys StreamCoin + PaymentRouter, grants SETTLER_ROLE to the relayer, funds the reward pool and writes
+ * deployments/<chainId>.json. Run via `npm run deploy:local` or `npm run deploy:amoy` in this workspace. */
+const fs = require('fs');
+const path = require('path');
+const { ethers } = require('hardhat');
+
+const ZERO_KEY = '0x' + '0'.repeat(64);
+
+async function main() {
+  const [deployer] = await ethers.getSigners();
+  if (!deployer) throw new Error('No deployer account. Set DEPLOYER_PRIVATE_KEY for this network.');
+  const { chainId } = await ethers.provider.getNetwork();
+
+  const initialSupply = BigInt(process.env.STRM_INITIAL_SUPPLY || '100000000');
+  const feeBps = Number(process.env.FEE_BPS || 1000);
+  const withdrawDelaySec = Number(process.env.WITHDRAW_DELAY_SEC || 15 * 60);
+  const rewardPool = ethers.parseEther(process.env.REWARD_POOL_STRM || '1000000');
+
+  const relayerKey = process.env.SETTLEMENT_RELAYER_PRIVATE_KEY;
+  let relayerAddress;
+  if (relayerKey && relayerKey.toLowerCase() !== ZERO_KEY) {
+    relayerAddress = new ethers.Wallet(relayerKey).address;
+  } else if (chainId === 31337n) {
+    relayerAddress = deployer.address; // the API defaults to Hardhat account #0 on the local chain
+  } else {
+    throw new Error('Set SETTLEMENT_RELAYER_PRIVATE_KEY to a real key before deploying to a public network.');
+  }
+
+  const token = await (await ethers.getContractFactory('StreamCoin')).deploy(initialSupply);
+  await token.waitForDeployment();
+  const router = await (await ethers.getContractFactory('PaymentRouter')).deploy(
+    await token.getAddress(), deployer.address, feeBps, withdrawDelaySec,
+  );
+  const receipt = await router.deploymentTransaction().wait();
+  await router.waitForDeployment();
+
+  await (await router.grantRole(await router.SETTLER_ROLE(), relayerAddress)).wait();
+  if (relayerAddress.toLowerCase() !== deployer.address.toLowerCase()) {
+    await (await token.transfer(relayerAddress, rewardPool)).wait();
+  }
+
+  const out = {
+    chainId: Number(chainId),
+    streamCoin: await token.getAddress(),
+    paymentRouter: await router.getAddress(),
+    deploymentBlock: receipt.blockNumber,
+    deployer: deployer.address,
+    relayer: relayerAddress,
+    feeBps,
+    withdrawDelaySec,
+    initialSupply: initialSupply.toString(),
+  };
+  const dir = path.join(__dirname, '..', 'deployments');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, `${chainId}.json`), JSON.stringify(out, null, 2) + '\n');
+
+  console.log(`\nDeployed on chain ${chainId}. Add these to .env:\n`);
+  console.log(`CHAIN_ID=${chainId}`);
+  console.log(`STREAMCOIN_TOKEN_ADDRESS=${out.streamCoin}`);
+  console.log(`PAYMENT_ROUTER_ADDRESS=${out.paymentRouter}`);
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exitCode = 1;
+});

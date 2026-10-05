@@ -1,0 +1,43 @@
+{
+  "name": "tesor_gp",
+  "version": "1.0.0",
+  "private": true,
+  "description": "StreamVerse: Web3 pay-as-you-watch streaming on Polygon",
+  "workspaces": [
+    "packages/*",
+    "apps/*",
+    "workers/*",
+    "contracts",
+    "ai",
+    "e2e"
+  ],
+  "scripts": {
+    "build:packages": "npm run build -w @tesor_gp/shared && npm run build -w @tesor_gp/blockchain && npm run build -w @tesor_gp/database",
+    "build": "npm run build:packages && npm run build --workspaces --if-present",
+    "dev": "concurrently -k -n shared,chain-sdk,api,worker,ai,web -c gray,gray,blue,magenta,yellow,green \"npm run dev -w @tesor_gp/shared\" \"npm run dev -w @tesor_gp/blockchain\" \"npm run dev -w @tesor_gp/api\" \"npm run dev -w @tesor_gp/worker-video-processor\" \"npm run dev -w @tesor_gp/ai\" \"npm run dev -w @tesor_gp/web\"",
+    "dev:chain": "npm run node -w @tesor_gp/contracts",
+    "dev:infra": "docker compose up",
+    "lint": "eslint .",
+    "typecheck": "npm run build:packages && npm run typecheck --workspaces --if-present",
+    "test": "npm run build:packages && npm run test --workspaces --if-present",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "setup:local": "node scripts/setup-local.mjs",
+    "reconcile": "npm run reconcile -w @tesor_gp/api",
+    "test:e2e": "npm run build && npm run test:e2e -w @tesor_gp/e2e"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^22.20.5",
+    "concurrently": "^10.0.5",
+    "eslint": "^10.12.0",
+    "globals": "^17.13.0",
+    "prettier": "^3.9.9",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.71.0",
+    "vitest": "^5.0.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

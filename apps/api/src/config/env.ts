@@ -1,0 +1,142 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import dotenv from 'dotenv';
+import { z } from 'zod';
+
+const ZERO_KEY = '0x' + '0'.repeat(64);
+// Well-known Hardhat account #0. Local development chain only; never valid in production.
+const HARDHAT_KEY = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
+
+function loadDotenv(): void {
+  let dir = process.cwd();
+  for (let i = 0; i < 6; i++) {
+    const candidate = path.join(dir, '.env');
+    if (fs.existsSync(candidate)) {
+      dotenv.config({ path: candidate });
+      return;
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) return;
+    dir = parent;
+  }
+}
+
+const num = (def: number) => z.coerce.number().int().positive().default(def);
+const hexKey = z.string().regex(/^0x[0-9a-fA-F]{64}$/, 'must be a 0x-prefixed 32-byte hex key');
+const address = z.string().regex(/^0x[0-9a-fA-F]{40}$/, 'must be a 0x-prefixed 20-byte address');
+
+const schema = z
+  .object({
+    NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+    PORT: num(4000),
+    API_BASE_URL: z.string().url().default('http://localhost:4000'),
+    WEB_BASE_URL: z.string().url().default('http://localhost:3000'),
+    DATABASE_URL: z.string().min(1),
+    REDIS_URL: z.string().min(1).default('redis://localhost:6379'),
+    JWT_SECRET: z.string().min(16),
+    COOKIE_SECRET: z.string().min(16),
+    PLAYBACK_SIGNING_SECRET: z.string().min(16),
+    JWT_ACCESS_TTL: z.string().default('15m'),
+    JWT_REFRESH_TTL: z.string().default('7d'),
+    /** 'bank' = simulated bank wallet, no crypto (default for the prototype). 'chain' = STRM tokens on a blockchain. */
+    PAYMENTS_MODE: z.enum(['bank', 'chain']).default('bank'),
+    /** Platform cut in basis points, bank mode only (chain mode reads the fee from the contract). */
+    /** How long a purchase keeps a video unlocked. */
+    ACCESS_HOURS: z.coerce.number().int().min(1).max(8760).default(48),
+    PLATFORM_FEE_BPS: z.coerce.number().int().min(0).max(5000).default(0),
+    CURRENCY_CODE: z.string().min(1).max(8).default('INR'),
+    CURRENCY_SYMBOL: z.string().min(1).max(4).default('₹'),
+    /** Limits for one "add money" action, in whole currency units. */
+    BANK_MIN_TOPUP: num(10),
+    BANK_MAX_TOPUP: num(50000),
+    CHAIN_ID: z.coerce.number().int().positive().default(80002),
+    RPC_URL: z.string().url().optional(),
+    POLYGON_AMOY_RPC_URL: z.string().url().default('https://rpc-amoy.polygon.technology'),
+    STREAMCOIN_TOKEN_ADDRESS: address.optional(),
+    PAYMENT_ROUTER_ADDRESS: address.optional(),
+    SETTLEMENT_RELAYER_PRIVATE_KEY: hexKey.optional(),
+    EXPLORER_URL: z.string().url().default('https://amoy.polygonscan.com'),
+    CONFIRMATIONS: z.coerce.number().int().nonnegative().optional(),
+    SETTLE_BATCH_SIZE: num(25),
+    SETTLE_MAX_ATTEMPTS: num(8),
+    WELCOME_BONUS_STRM: num(50),
+    STORAGE_PROVIDER: z.enum(['local', 's3', 'ipfs']).default('local'),
+    UPLOAD_DIR: z.string().default('./uploads'),
+    HLS_OUTPUT_DIR: z.string().default('./hls-output'),
+    FFMPEG_PATH: z.string().default('ffmpeg'),
+    FFPROBE_PATH: z.string().default('ffprobe'),
+    MAX_UPLOAD_MB: num(1024),
+    HEARTBEAT_INTERVAL_SEC: num(10),
+    PLAYBACK_TOKEN_TTL_SEC: num(30),
+    SESSION_TIMEOUT_SEC: num(45),
+    AI_SERVICE_URL: z.string().url().default('http://localhost:5000'),
+    AI_TIMEOUT_MS: num(800),
+    AI_FALLBACK_MODE: z.string().default('trending'),
+    RATE_LIMIT_MAX: num(300),
+    AUTH_RATE_LIMIT_MAX: num(30),
+    BCRYPT_ROUNDS: z.coerce.number().int().min(4).max(14).default(10),
+    LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
+  })
+  .superRefine((env, ctx) => {
+    if (env.STORAGE_PROVIDER !== 'local') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['STORAGE_PROVIDER'],
+        message: `storage provider "${env.STORAGE_PROVIDER}" is not implemented; use "local"`,
+      });
+    }
+    if (env.NODE_ENV === 'production' && env.PAYMENTS_MODE === 'chain') {
+      const key = env.SETTLEMENT_RELAYER_PRIVATE_KEY;
+      if (!key || key.toLowerCase() === ZERO_KEY) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['SETTLEMENT_RELAYER_PRIVATE_KEY'],
+          message: 'a real relayer key is required in production (the all-zero key is rejected)',
+        });
+      }
+      if (env.CHAIN_ID === 31337) {
+        ctx.addIssue({ code: 'custom', path: ['CHAIN_ID'], message: 'the local chain id 31337 is not allowed in production' });
+      }
+    }
+  });
+
+export type Env = Omit<z.infer<typeof schema>, 'SETTLEMENT_RELAYER_PRIVATE_KEY' | 'CONFIRMATIONS' | 'RPC_URL'> & {
+  SETTLEMENT_RELAYER_PRIVATE_KEY: string | undefined;
+  CONFIRMATIONS: number;
+  RPC_URL: string;
+};
+
+export function parseEnv(source: NodeJS.ProcessEnv): Env {
+  const cleaned = Object.fromEntries(Object.entries(source).filter(([, v]) => v !== undefined && v !== ''));
+  const result = schema.safeParse(cleaned);
+  if (!result.success) {
+    const lines = result.error.issues.map((i) => `  - ${i.path.join('.') || '(root)'}: ${i.message}`);
+    throw new Error(`Invalid environment configuration:\n${lines.join('\n')}`);
+  }
+  const e = result.data;
+  const local = e.CHAIN_ID === 31337;
+  let relayer = e.SETTLEMENT_RELAYER_PRIVATE_KEY;
+  if (relayer?.toLowerCase() === ZERO_KEY) relayer = undefined;
+  if (!relayer && local) relayer = HARDHAT_KEY;
+  return {
+    ...e,
+    SETTLEMENT_RELAYER_PRIVATE_KEY: relayer,
+    CONFIRMATIONS: e.CONFIRMATIONS ?? (local ? 1 : 3),
+    RPC_URL: e.RPC_URL ?? (local ? 'http://127.0.0.1:8545' : e.POLYGON_AMOY_RPC_URL),
+  };
+}
+
+let cached: Env | undefined;
+
+/** Loads .env, validates, and exits with a readable message on failure. */
+export function loadEnv(): Env {
+  if (cached) return cached;
+  loadDotenv();
+  try {
+    cached = parseEnv(process.env);
+  } catch (err) {
+    process.stderr.write(`${(err as Error).message}\n`);
+    process.exit(1);
+  }
+  return cached;
+}

@@ -1,0 +1,22 @@
+{
+  "name": "@tesor_gp/contracts",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "hardhat compile",
+    "test": "hardhat test",
+    "coverage": "hardhat coverage",
+    "node": "hardhat node",
+    "deploy:local": "hardhat run scripts/deploy.js --network localhost",
+    "deploy:amoy": "hardhat run scripts/deploy.js --network polygonAmoy",
+    "typecheck": "echo \"contracts: no TypeScript sources\""
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^6.1.2",
+    "@openzeppelin/contracts": "~5.1.0",
+    "dotenv": "^18.0.5",
+    "hardhat": "^2.29.1",
+    "solc": "^0.8.28",
+    "typescript": "^5.3.3"
+  }
+}

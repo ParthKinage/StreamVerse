@@ -1,0 +1,316 @@
+// Prisma schema for StreamVerse (Tesor_gp).
+// Money columns are Decimal(38,18); application code converts with bigint wei helpers from @tesor_gp/shared.
+
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated"
+  moduleFormat = "cjs"
+}
+
+enum Role {
+  USER
+  CREATOR
+  ADMIN
+}
+
+enum ProcessingStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum SessionStatus {
+  ACTIVE
+  PAUSED
+  COMPLETED
+  SETTLED
+}
+
+enum SettlementStatus {
+  PENDING
+  SETTLED
+  FAILED
+}
+
+enum RewardStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+model User {
+  id            String   @id @default(uuid())
+  email         String   @unique
+  passwordHash  String
+  username      String   @unique
+  walletAddress String?  @unique
+  role          Role     @default(USER)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  creatorProfile CreatorProfile?
+  watchSessions  WatchSession[]
+  settlements    PaymentSettlement[]
+  rewards        TokenReward[]
+  refreshTokens  RefreshToken[]
+  escrowAccount  EscrowAccount?
+  ledgerEntries  LedgerEntry[]
+  purchases      VideoPurchase[]
+  watchlist      WatchlistItem[]
+  likes          VideoLike[]
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model CreatorProfile {
+  id            String   @id @default(uuid())
+  userId        String   @unique
+  channelName   String
+  bio           String?
+  totalEarnings Decimal  @default(0) @db.Decimal(38, 18)
+  createdAt     DateTime @default(now())
+
+  user        User                @relation(fields: [userId], references: [id])
+  videos      Video[]
+  settlements PaymentSettlement[]
+}
+
+model Video {
+  id                String           @id @default(uuid())
+  title             String
+  description       String
+  creatorId         String
+  originalFilePath  String
+  hlsManifestPath   String?
+  thumbnailPath     String?
+  durationSeconds   Int              @default(0)
+  priceSTRM         Decimal          @default(20) @db.Decimal(38, 18)
+  category          String           @default("General")
+  tags              String[]
+  processingStatus  ProcessingStatus @default(PENDING)
+  transcodeProgress Int              @default(0)
+  failureReason     String?
+  isPublished       Boolean          @default(false)
+  archivedAt        DateTime?
+  viewsCount        Int              @default(0)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  creator       CreatorProfile      @relation(fields: [creatorId], references: [id])
+  watchSessions WatchSession[]
+  settlements   PaymentSettlement[]
+  purchases     VideoPurchase[]
+  watchlist     WatchlistItem[]
+  likes         VideoLike[]
+
+  @@index([creatorId])
+  @@index([isPublished, processingStatus, createdAt])
+  @@index([category])
+}
+
+model WatchSession {
+  id                      String        @id @default(uuid())
+  userId                  String
+  videoId                 String
+  playbackToken           String        @unique
+  ratePerMinuteSTRM       Decimal       @default(0) @db.Decimal(38, 18)
+  verifiedDurationSeconds Int           @default(0)
+  chargedSTRM             Decimal       @default(0) @db.Decimal(38, 18)
+  lastSequence            Int           @default(0)
+  lastPlaybackTime        Float         @default(0)
+  lastHeartbeatResponse   Json?
+  viewCounted             Boolean       @default(false)
+  status                  SessionStatus @default(ACTIVE)
+  startedAt               DateTime      @default(now())
+  lastHeartbeatAt         DateTime      @default(now())
+  endedAt                 DateTime?
+  endReason               String?
+
+  user        User                @relation(fields: [userId], references: [id])
+  video       Video               @relation(fields: [videoId], references: [id])
+  heartbeats  WatchHeartbeat[]
+  settlements PaymentSettlement[]
+
+  @@index([userId, status])
+  @@index([videoId])
+  @@index([status, lastHeartbeatAt])
+}
+
+model WatchHeartbeat {
+  id              String   @id @default(uuid())
+  sessionId       String
+  sequence        Int
+  playbackTime    Float
+  creditedSeconds Int      @default(0)
+  createdAt       DateTime @default(now())
+
+  session WatchSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, sequence])
+}
+
+model PaymentSettlement {
+  id                  String           @id @default(uuid())
+  settlementKey       String           @unique
+  sessionId           String?
+  userId              String
+  creatorId           String
+  videoId             String
+  watchedSeconds      Int
+  amountSTRM          Decimal          @db.Decimal(38, 18)
+  platformFeeSTRM     Decimal          @db.Decimal(38, 18)
+  creatorEarningsSTRM Decimal          @db.Decimal(38, 18)
+  txHash              String?
+  status              SettlementStatus @default(PENDING)
+  attempts            Int              @default(0)
+  lastError           String?
+  settledAt           DateTime?
+  escrowAppliedAt     DateTime?
+  createdAt           DateTime         @default(now())
+
+  user    User           @relation(fields: [userId], references: [id])
+  session  WatchSession?   @relation(fields: [sessionId], references: [id])
+  creator  CreatorProfile  @relation(fields: [creatorId], references: [id])
+  video    Video           @relation(fields: [videoId], references: [id])
+  purchase VideoPurchase?
+
+  @@index([sessionId])
+  @@index([userId, status])
+  @@index([creatorId])
+  @@index([videoId])
+  @@index([status, createdAt])
+}
+
+model TokenReward {
+  id            String       @id @default(uuid())
+  userId        String
+  reason        String
+  walletAddress String?
+  amountSTRM    Decimal      @db.Decimal(38, 18)
+  txHash        String?
+  status        RewardStatus @default(PENDING)
+  attempts      Int          @default(0)
+  lastError     String?
+  createdAt     DateTime     @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([userId, reason])
+  @@unique([walletAddress, reason])
+  @@index([status])
+}
+
+model EscrowAccount {
+  id                String    @id @default(uuid())
+  userId            String    @unique
+  onChainBalance    Decimal   @default(0) @db.Decimal(38, 18)
+  pendingWithdrawal Decimal   @default(0) @db.Decimal(38, 18)
+  withdrawUnlockAt  DateTime?
+  updatedAtBlock    BigInt    @default(0)
+  updatedAt         DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// Demo-bank ledger (PAYMENTS_MODE=bank): money added from or sent back to a dummy bank account, and creator cash-outs.
+model LedgerEntry {
+  id            String   @id @default(uuid())
+  userId        String
+  /// BANK_TOPUP | BANK_WITHDRAW | CREATOR_PAYOUT
+  type          String
+  amountSTRM    Decimal  @db.Decimal(38, 18)
+  bankAccountId String?
+  label         String
+  createdAt     DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([userId, type])
+}
+
+model ChainEvent {
+  id          String    @id @default(uuid())
+  txHash      String
+  logIndex    Int
+  name        String
+  address     String?
+  blockNumber BigInt
+  payload     Json
+  processedAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@unique([txHash, logIndex])
+  @@index([address, blockNumber])
+  @@index([blockNumber])
+}
+
+model ChainCursor {
+  id                 String   @id @default(uuid())
+  chainId            Int
+  contract           String
+  lastProcessedBlock BigInt   @default(0)
+  updatedAt          DateTime @updatedAt
+
+  @@unique([chainId, contract])
+}
+
+model WatchlistItem {
+  id        String   @id @default(uuid())
+  userId    String
+  videoId   String
+  createdAt DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, videoId])
+  @@index([videoId])
+}
+
+model VideoLike {
+  id        String   @id @default(uuid())
+  userId    String
+  videoId   String
+  createdAt DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, videoId])
+  @@index([videoId])
+}
+
+/// A viewer's paid, time-limited access to one video. The payment itself is the linked PaymentSettlement.
+model VideoPurchase {
+  id           String   @id @default(uuid())
+  userId       String
+  videoId      String
+  settlementId String   @unique
+  amountSTRM   Decimal  @db.Decimal(38, 18)
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+
+  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  video      Video             @relation(fields: [videoId], references: [id])
+  settlement PaymentSettlement @relation(fields: [settlementId], references: [id])
+
+  @@index([userId, videoId, expiresAt])
+  @@index([videoId])
+}
