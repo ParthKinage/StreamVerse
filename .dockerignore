@@ -1,0 +1,11 @@
+node_modules
+**/node_modules
+.git
+.env
+**/dist
+uploads
+hls-output
+e2e/test-results
+e2e/playwright-report
+contracts/artifacts
+contracts/cache
