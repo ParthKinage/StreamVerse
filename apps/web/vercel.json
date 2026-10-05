@@ -1,0 +1,7 @@
+{
+  "rewrites": [
+    { "source": "/api/:path*", "destination": "https://streamverse-k1se.onrender.com/api/:path*" },
+    { "source": "/playback/:path*", "destination": "https://streamverse-k1se.onrender.com/playback/:path*" },
+    { "source": "/((?!api|playback).*)", "destination": "/index.html" }
+  ]
+}
