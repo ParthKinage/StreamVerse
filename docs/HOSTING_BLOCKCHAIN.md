@@ -18,10 +18,16 @@ and the explorer change.
 
 1. **Two wallets.** Create a Deployer and a Relayer account in MetaMask and export both private keys. Use fresh
    accounts that hold nothing of value.
-2. **Gas.** Get test POL from a faucet for both. The deployment costs about 0.06 POL in total at 30 gwei (the router is
-   about 1.65 million gas). The Relayer then spends roughly 0.003 POL per transaction, and one transaction can carry
+2. **Gas.** Get test POL from a faucet for both. Measured on Amoy on 2026-10-07: the router plus the role grant and the
+   coin transfer to the relayer take about 1.79 million gas (router alone 1.67 million), which is 0.054 POL at 30 gwei
+   and 0.098 POL at the 55 gwei Amoy was charging that day. Keep at least 0.15 POL on the Deployer so a price spike
+   cannot stop the deployment half-way. The Relayer then spends roughly 0.003 POL per transaction, and one transaction can carry
    many purchases or payments, so start it with at least 0.1 POL.
 3. **Local `.env`** (never commit it):
+   Keys may be written with or without the leading `0x` (MetaMask exports them without it).
+   `https://rpc-amoy.polygon.technology`, the built-in default, did not resolve on 2026-10-07; always set
+   `POLYGON_AMOY_RPC_URL` (`https://polygon-amoy-bor-rpc.publicnode.com` answered that day; a provider URL with your own
+   API key is more reliable, and must never be committed).
    ```
    CHAIN_ID=80002
    POLYGON_AMOY_RPC_URL=<a reliable RPC URL, for example from Alchemy or Infura>

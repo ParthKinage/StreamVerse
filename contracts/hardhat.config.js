@@ -34,7 +34,9 @@ subtask(TASK_COMPILE_SOLIDITY_GET_SOLC_BUILD, async (args, hre, runSuper) => {
   return runSuper();
 });
 
-const deployerKey = process.env.DEPLOYER_PRIVATE_KEY;
+// MetaMask exports keys without "0x"; accept both spellings.
+const rawDeployerKey = process.env.DEPLOYER_PRIVATE_KEY?.trim();
+const deployerKey = rawDeployerKey && /^[0-9a-fA-F]{64}$/.test(rawDeployerKey) ? `0x${rawDeployerKey}` : rawDeployerKey;
 
 const { task } = require('hardhat/config');
 

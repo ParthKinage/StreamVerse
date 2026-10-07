@@ -27,7 +27,12 @@ function loadDotenv(): void {
 }
 
 const num = (def: number) => z.coerce.number().int().positive().default(def);
-const hexKey = z.string().regex(/^0x[0-9a-fA-F]{64}$/, 'must be a 0x-prefixed 32-byte hex key');
+/** A 32-byte hex key. MetaMask exports keys without "0x"; both spellings are accepted and normalised to "0x…". */
+const hexKey = z
+  .string()
+  .trim()
+  .transform((k) => (/^[0-9a-fA-F]{64}$/.test(k) ? `0x${k}` : k))
+  .pipe(z.string().regex(/^0x[0-9a-fA-F]{64}$/, 'must be a 32-byte hex key (64 hex characters, with or without 0x)'));
 const address = z.string().regex(/^0x[0-9a-fA-F]{40}$/, 'must be a 0x-prefixed 20-byte address');
 
 const schema = z

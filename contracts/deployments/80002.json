@@ -1,0 +1,11 @@
+{
+  "chainId": 80002,
+  "streamCoin": "0xD244435f5b1B8DB7A0329b32eb2Bb3165a5b44Cf",
+  "paymentRouter": "0x3C3624C271CF2df88a819F796De49bFEa05f125F",
+  "deploymentBlock": 49560912,
+  "deployer": "0x4937217d9cBE68bA692E18fA69887071C0982309",
+  "relayer": "0x96E90c1CeA248Ca0f6e199C9FAb25d5d8994983e",
+  "feeBps": 3000,
+  "withdrawDelaySec": 900,
+  "initialSupply": "100000000"
+}
