@@ -1,5 +1,6 @@
 import {
   Contract,
+  FeeData,
   Interface,
   JsonRpcProvider,
   Network,
@@ -25,6 +26,36 @@ export interface AdapterConfig {
   /** Extra attempts for reads and idempotent writes (default 2). */
   retries?: number;
   retryBaseDelayMs?: number;
+  /**
+   * Fee ceiling above the current base fee, in percent (default 25). ethers offers up to 2 x base fee + tip, and the
+   * node refuses a transaction unless the relayer holds gas limit x that ceiling, so a lower ceiling lets a lightly
+   * funded relayer keep working. The fee actually paid is base fee + tip either way.
+   */
+  feeHeadroomPct?: number;
+}
+
+/** Replaces ethers' fee ceiling (2 x base fee + tip) with base fee x (1 + headroom) + tip. Legacy chains are untouched. */
+export function cappedFeeData(fee: FeeData, headroomPct: number): FeeData {
+  if (fee.maxFeePerGas == null || fee.maxPriorityFeePerGas == null) return fee;
+  const base = (fee.maxFeePerGas - fee.maxPriorityFeePerGas) / 2n;
+  const maxFeePerGas = base + (base * BigInt(headroomPct)) / 100n + fee.maxPriorityFeePerGas;
+  return new FeeData(fee.gasPrice, maxFeePerGas, fee.maxPriorityFeePerGas);
+}
+
+/** The relayer's provider: every transaction it signs gets the lower fee ceiling. */
+class CappedFeeProvider extends JsonRpcProvider {
+  constructor(
+    url: string,
+    network: Network,
+    options: ConstructorParameters<typeof JsonRpcProvider>[2],
+    private readonly headroomPct: number,
+  ) {
+    super(url, network, options);
+  }
+
+  override async getFeeData(): Promise<FeeData> {
+    return cappedFeeData(await super.getFeeData(), this.headroomPct);
+  }
 }
 
 export interface SettlementItem {
@@ -144,13 +175,12 @@ export class ChainAdapter {
   constructor(config: AdapterConfig) {
     this.config = { confirmations: 1, timeoutMs: 10_000, retries: 2, retryBaseDelayMs: 250, ...config };
     const network = Network.from(config.chainId);
-    this.provider = new JsonRpcProvider(config.rpcUrl, network, {
-      staticNetwork: network,
-      batchMaxCount: 1,
-      cacheTimeout: -1,
-      polling: true,
-      pollingInterval: 250,
-    });
+    this.provider = new CappedFeeProvider(
+      config.rpcUrl,
+      network,
+      { staticNetwork: network, batchMaxCount: 1, cacheTimeout: -1, polling: true, pollingInterval: 250 },
+      config.feeHeadroomPct ?? 25,
+    );
     this.routerRead = new Contract(config.paymentRouterAddress, PAYMENT_ROUTER_ABI, this.provider);
     this.tokenRead = new Contract(config.streamCoinAddress, STREAM_COIN_ABI, this.provider);
     if (config.relayerPrivateKey) {

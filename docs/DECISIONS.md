@@ -178,6 +178,19 @@ that size.
 | D-PLAYER-ERRORS | The player names the problem (not found, not authorised, still processing, network, decoding) and offers Retry. Transient network errors (no answer, 429, 5xx) are retried with back-off; 4xx are not retried by hls.js. A 401/403 on a segment (signed URLs ran out after a long pause) reloads the playlist and continues at the same position. Cookies are only sent to our own origin, never to the bucket. | implementation choice |
 | D-LOCAL-S3 | Tests and local development use `versity/versitygw:v1.8.0` (docker-compose service `s3`, port 7070, development-only keys) because the MinIO image is no longer published on Docker Hub. It checks SigV4 signatures and supports bucket CORS, so signing bugs fail in tests. | implementation choice |
 
+## Relayer gas on Polygon Amoy (owner chose option 1: stay on Amoy, need less gas)
+
+Found on 2026-10-07: welcome bonuses stayed "on the way" because the relayer (0.0186 POL) could not send a batch.
+The node refuses a transaction unless the sender holds gas limit x the fee ceiling; ethers offered 2 x base fee + tip
+(85 gwei while Amoy charged 55), so 8 bonuses needed 0.045 POL up front although they cost about 0.025.
+
+| # | Decision | Status |
+|---|---|---|
+| D-FEE-CAP | The relayer's provider offers base fee x 1.25 + tip (`feeHeadroomPct`, default 25) as the fee ceiling. On Amoy that day: 62.5 gwei instead of 85. If the base fee rises more than 25% before inclusion the transaction waits in the mempool until it falls back; nothing is lost. | implementation choice |
+| D-AFFORDABLE-BATCH | Credits and settlements that fail with insufficient gas are retried with the oldest half, down to one item; the rest wait for the next run. | implementation choice |
+| D-LOW-GAS | `LOW_GAS_MILLI` default raised from 20 (0.02) to 150 (0.15): what a full batch must hold up front. | implementation choice |
+| D-CHAIN-ALTERNATIVES | Compared on 2026-10-07: Base Sepolia (cheap gas, but its Alchemy faucet needs 0.001 ETH on Ethereum mainnet), Tenderly Virtual TestNets (unlimited faucet, but the free plan has no public endpoint and stops at 50 blocks), a self-hosted chain (needs a paid server with a disk). Owner kept Polygon Amoy, topped up from faucets (Alchemy 0.1 POL per 24 h, QuickNode every 12 h). | owner decision |
+
 ## Limitations and unverified items (UNKNOWN)
 
 | Item | Why it could not be completed in the build environment |

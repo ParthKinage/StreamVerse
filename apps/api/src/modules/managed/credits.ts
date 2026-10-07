@@ -2,6 +2,7 @@ import { id as keccakId } from 'ethers';
 import { Reverted, type CreditItem } from '@tesor_gp/blockchain';
 import { DOMAIN_EVENTS, weiToString } from '@tesor_gp/shared';
 import type { AppContext } from '../../context';
+import { sendAffordable } from '../../infra/affordable';
 import { toWei } from '../common';
 
 /** Reverts that can never succeed on a retry: the credit is failed straight away. */
@@ -103,9 +104,11 @@ export async function processCredits(ctx: AppContext): Promise<{ credited: numbe
       }
     }
 
-    const result = await chain.creditBatch(todo.map(toItem));
-    await markSent(ctx, todo, result.txHash);
-    return { credited: reconciled + todo.length };
+    const { sent, result } = await sendAffordable(todo, (batch) => chain.creditBatch(batch.map(toItem)));
+    await markSent(ctx, sent, result.txHash);
+    // Gas was short: the rest go in the next transaction rather than waiting for the sweeper.
+    if (sent.length < todo.length) await enqueueCredits(ctx);
+    return { credited: reconciled + sent.length };
   } catch (err) {
     const message = (err as Error).message.slice(0, 500);
     for (const r of rows) await update(ctx, r, { attempts: r.attempts + 1, lastError: message });
