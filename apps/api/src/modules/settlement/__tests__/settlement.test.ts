@@ -2,7 +2,7 @@ import { parseEther } from 'ethers';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, inject } from 'vitest';
 import { ChainAdapter } from '@tesor_gp/blockchain';
 import { FlakyRpcProxy } from '@tesor_gp/blockchain/testing';
-import { authed, createHarness, registerUser, resetDb, routerFor, seedVideo, seedViewer, type Harness, type SeededVideo, type Viewer } from '../../../test/harness';
+import { authed, createHarness, registerUser, resetDb, routerFor, seedVideo, seedViewer, watchPieces, type Harness, type SeededVideo, type Viewer } from '../../../test/harness';
 import { indexUntilCaughtUp } from '../../indexer';
 import { processSettlements, reconcile, retrySettlement } from '..';
 
@@ -37,12 +37,13 @@ beforeEach(async () => {
   await resetDb(h.ctx);
 });
 
-/** Buys the video (price 5): one PENDING settlement. Returns the settlement id. */
+/** Watches 5 pieces of the video (1 STRM each) and ends the session: one PENDING settlement of 5. Returns its id. */
 async function bought(viewer: Viewer, video: SeededVideo): Promise<string> {
-  const res = await authed(h, viewer.user).post(`/api/v1/videos/${video.id}/purchase`).send({});
-  expect(res.status).toBe(200);
-  const purchase = await h.ctx.prisma.videoPurchase.findFirstOrThrow({ where: { userId: viewer.user.id, videoId: video.id } });
-  return purchase.settlementId;
+  const r = await watchPieces(h, viewer.user, video.id, [0, 1, 2, 3, 4]);
+  expect(r.statuses).toEqual([200, 200, 200, 200, 200]);
+  const end = await authed(h, viewer.user).post(`/api/v1/watch/sessions/${r.sid}/end`).send({});
+  expect(end.body.settlementId).toBeTruthy();
+  return end.body.settlementId as string;
 }
 
 describe('settlement', () => {

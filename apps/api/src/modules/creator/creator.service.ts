@@ -1,7 +1,7 @@
 import {
-  DEFAULT_VIDEO_PRICE_STRM,
+  DEFAULT_RATE_PER_MINUTE_STRM,
   DOMAIN_EVENTS,
-  MAX_VIDEO_PRICE_STRM,
+  MAX_RATE_PER_MINUTE_STRM,
   parseSTRM,
   stringToWei,
   weiToString,
@@ -20,12 +20,13 @@ import { isPayoutPending } from '../managed/payout';
 import { isManaged } from '../managed/wallets';
 import { claimableFor, getLifetimeEarned, getPaidOut } from './earnings';
 
-const MAX_PRICE_WEI = parseSTRM(String(MAX_VIDEO_PRICE_STRM));
+const MAX_RATE_WEI = parseSTRM(String(MAX_RATE_PER_MINUTE_STRM));
 
-export function validatePriceWei(raw: string | undefined): bigint {
-  if (raw === undefined) return parseSTRM(DEFAULT_VIDEO_PRICE_STRM);
+/** The creator's rate per minute; 0 makes the video free. */
+export function validateRateWei(raw: string | undefined): bigint {
+  if (raw === undefined) return parseSTRM(DEFAULT_RATE_PER_MINUTE_STRM);
   const wei = stringToWei(raw);
-  if (wei > MAX_PRICE_WEI) throw badRequest('VALIDATION_ERROR', `Price must be between 0 and ${MAX_VIDEO_PRICE_STRM} for the whole video`);
+  if (wei > MAX_RATE_WEI) throw badRequest('VALIDATION_ERROR', `The rate must be between 0 and ${MAX_RATE_PER_MINUTE_STRM} per minute`);
   return wei;
 }
 
@@ -57,11 +58,11 @@ async function ownedVideo(ctx: AppContext, userId: string, videoId: string) {
 export async function createVideo(
   ctx: AppContext,
   userId: string,
-  input: { title: string; description: string; category: string; tags: string[]; priceWei?: string | undefined },
+  input: { title: string; description: string; category: string; tags: string[]; ratePerMinuteWei?: string | undefined },
   filePath: string,
 ): Promise<VideoDto> {
   const profile = await requireCreatorProfile(ctx, userId);
-  const price = validatePriceWei(input.priceWei);
+  const rate = validateRateWei(input.ratePerMinuteWei);
   const video = await ctx.prisma.video.create({
     data: {
       title: input.title,
@@ -70,7 +71,7 @@ export async function createVideo(
       tags: input.tags,
       creatorId: profile.id,
       originalFilePath: filePath,
-      priceSTRM: fromWei(price),
+      ratePerMinuteSTRM: fromWei(rate),
     },
     include: videoInclude,
   });
@@ -116,7 +117,7 @@ export async function updateVideo(ctx: AppContext, userId: string, videoId: stri
       ...(patch.description !== undefined ? { description: patch.description } : {}),
       ...(patch.category !== undefined ? { category: patch.category } : {}),
       ...(patch.tags !== undefined ? { tags: patch.tags } : {}),
-      ...(patch.priceWei !== undefined ? { priceSTRM: fromWei(validatePriceWei(patch.priceWei)) } : {}),
+      ...(patch.ratePerMinuteWei !== undefined ? { ratePerMinuteSTRM: fromWei(validateRateWei(patch.ratePerMinuteWei)) } : {}),
     },
     include: videoInclude,
   });

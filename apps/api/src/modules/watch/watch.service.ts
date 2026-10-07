@@ -2,7 +2,9 @@ import crypto from 'node:crypto';
 import {
   DOMAIN_EVENTS,
   HEARTBEAT_GRACE_SEC,
+  START_MIN_BALANCE_SECONDS,
   VIEW_MIN_SECONDS,
+  costForSeconds,
   splitFee,
   weiToString,
   type EndSessionResponse,
@@ -17,9 +19,11 @@ import type { AppContext } from '../../context';
 import { AppError, conflict, forbidden, notFound } from '../../middleware/errors';
 import { decodeCursor, encodeCursor, fromWei, toWei, videoInclude } from '../common';
 import { decorateVideos, publicVideoWhere } from '../catalog';
-import { servedKey, signEndToken, verifiedKey } from '../playback';
+import { signEndToken } from '../playback';
 import { enqueueSettlement, getFeeBps, settlementKeyFor } from '../settlement';
+import { ensureManagedWallet, isManaged } from '../managed/wallets';
 import { getBalances } from '../wallet';
+import { paidSecondsFor } from './charges';
 
 type Tx = Prisma.TransactionClient;
 
@@ -78,7 +82,6 @@ async function finalizeInTx(ctx: AppContext, tx: Tx, sessionId: string, reason: 
 async function afterFinalize(ctx: AppContext, sessionId: string, outcome: FinalizeOutcome): Promise<void> {
   if (!outcome.transitioned) return;
   ctx.events.emit(DOMAIN_EVENTS.SESSION_ENDED, { sessionId });
-  void ctx.redis.del(servedKey(sessionId), verifiedKey(sessionId)).catch(() => undefined);
   if (outcome.settlementId) {
     ctx.events.emit(DOMAIN_EVENTS.SETTLEMENT_CREATED, { settlementId: outcome.settlementId });
     if (ctx.env.PAYMENTS_MODE === 'bank') await enqueueSettlement(ctx);
@@ -105,23 +108,28 @@ export async function startSession(ctx: AppContext, userId: string, videoId: str
   });
   if (!video) throw new AppError(404, 'VIDEO_NOT_AVAILABLE', 'This video is not available');
 
-  const price = toWei(video.priceSTRM);
   const own = video.creator.userId === userId;
-  const free = price === 0n || own;
+  // The creator's own videos are free to them; everyone else pays the rate per second they are sent.
+  const rate = own ? 0n : toWei(video.ratePerMinuteSTRM);
+  const free = rate === 0n;
+
+  // Payments need wallets on both sides (moved here from the old unlock step).
+  if (!free && isManaged(ctx)) {
+    await ensureManagedWallet(ctx, userId);
+    if (!video.creator.user.walletAddress) await ensureManagedWallet(ctx, video.creator.userId);
+  } else if (!free && ctx.env.PAYMENTS_MODE === 'chain') {
+    if (!video.creator.user.walletAddress) throw new AppError(404, 'VIDEO_NOT_AVAILABLE', 'This creator cannot receive payments yet');
+    const viewer = await ctx.prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { walletAddress: true } });
+    if (!viewer.walletAddress) throw new AppError(402, 'WALLET_NOT_LINKED', 'Link your wallet to watch paid videos');
+  }
 
   let available = (await getBalances(ctx.prisma, userId)).available;
-  let accessUntil: Date | null = null;
-  if (!free) {
-    // Paid videos play only inside an active purchase window. Buying happens in POST /videos/:id/purchase.
-    const purchase = await ctx.prisma.videoPurchase.findFirst({
-      where: { userId, videoId, expiresAt: { gt: ctx.now() } },
-      orderBy: { expiresAt: 'desc' },
-      select: { expiresAt: true },
-    });
-    if (!purchase) {
-      throw new AppError(402, 'PURCHASE_REQUIRED', 'Unlock this video to watch it', { priceWei: weiToString(price), availableWei: weiToString(available) });
-    }
-    accessUntil = purchase.expiresAt;
+  const paidSeconds = await paidSecondsFor(ctx, userId, videoId);
+  // Starting needs about a minute of balance, unless everything left to watch has already been paid for.
+  const unpaidSeconds = Math.max(0, video.durationSeconds - paidSeconds);
+  const needed = costForSeconds(Math.min(START_MIN_BALANCE_SECONDS, unpaidSeconds), rate);
+  if (!free && unpaidSeconds > 0 && available < needed) {
+    throw new AppError(402, 'INSUFFICIENT_BALANCE', 'Add money to start watching', { requiredWei: weiToString(needed), availableWei: weiToString(available) });
   }
 
   const feeBps = await getFeeBps(ctx);
@@ -146,6 +154,7 @@ export async function startSession(ctx: AppContext, userId: string, videoId: str
         userId,
         videoId,
         playbackToken: crypto.randomBytes(24).toString('base64url'),
+        ratePerMinuteSTRM: fromWei(rate),
         lastHeartbeatAt: ctx.now(),
         startedAt: ctx.now(),
       },
@@ -154,8 +163,6 @@ export async function startSession(ctx: AppContext, userId: string, videoId: str
   for (const e of ended) await afterFinalize(ctx, e.id, e.outcome);
   available = (await getBalances(ctx.prisma, userId)).available;
 
-  await ctx.redis.set(verifiedKey(session.id), '0', 'EX', 86_400).catch(() => undefined);
-  await ctx.redis.del(servedKey(session.id)).catch(() => undefined);
   ctx.events.emit(DOMAIN_EVENTS.SESSION_STARTED, { sessionId: session.id, userId, videoId });
 
   const resume = last && video.durationSeconds > 0 && last.lastPlaybackTime < video.durationSeconds - 5 ? Math.floor(last.lastPlaybackTime) : 0;
@@ -169,7 +176,9 @@ export async function startSession(ctx: AppContext, userId: string, videoId: str
       resumePositionSec: resume,
       availableWei: weiToString(available),
       free,
-      accessUntil: accessUntil ? accessUntil.toISOString() : null,
+      ratePerMinuteWei: weiToString(rate),
+      paidSeconds,
+      accessUntil: null,
     },
   };
 }
@@ -180,7 +189,6 @@ export interface HeartbeatResult {
 }
 
 export async function heartbeat(ctx: AppContext, userId: string, sessionId: string, input: HeartbeatRequest): Promise<HeartbeatResult> {
-  const feeBps = await getFeeBps(ctx);
   const result = await ctx.prisma.$transaction(async (tx) => {
     if (!(await lockSession(tx, sessionId))) throw notFound('Session not found');
     const s = await tx.watchSession.findUniqueOrThrow({ where: { id: sessionId } });
@@ -189,7 +197,7 @@ export async function heartbeat(ctx: AppContext, userId: string, sessionId: stri
     // Idempotent retry of the previous heartbeat.
     if (input.sequence === s.lastSequence && s.lastHeartbeatResponse) {
       const stored = s.lastHeartbeatResponse as unknown as HeartbeatResponse;
-      return { response: stored, renewCookie: stored.action !== 'stop', outcome: null as FinalizeOutcome | null, verified: s.verifiedDurationSeconds };
+      return { response: stored, renewCookie: stored.action !== 'stop', verified: s.verifiedDurationSeconds };
     }
     if (s.status !== 'ACTIVE') {
       throw conflict('SESSION_NOT_ACTIVE', 'This session has ended', { endReason: s.endReason });
@@ -212,8 +220,8 @@ export async function heartbeat(ctx: AppContext, userId: string, sessionId: stri
       if (wallDelta <= cap) nextAnchor = new Date(s.lastHeartbeatAt.getTime() + credited * 1000);
     }
     const verified = s.verifiedDurationSeconds + credited;
-    // Paying happens once, when the video is unlocked. Watching is not metered; heartbeats only count verified time.
-    const charged = 0n;
+    // Money is charged per piece of video sent (see charges.ts); heartbeats count watch time and report the total.
+    const charged = toWei(s.chargedSTRM);
 
     await tx.watchHeartbeat.create({
       data: { sessionId, sequence: input.sequence, playbackTime: input.playbackTime, creditedSeconds: credited },
@@ -224,44 +232,30 @@ export async function heartbeat(ctx: AppContext, userId: string, sessionId: stri
         lastSequence: input.sequence,
         lastPlaybackTime: input.playbackTime,
         verifiedDurationSeconds: verified,
-        chargedSTRM: fromWei(charged),
         lastHeartbeatAt: nextAnchor,
       },
     });
 
-    const video = await tx.video.findUniqueOrThrow({ where: { id: s.videoId }, select: { priceSTRM: true, creator: { select: { userId: true } } } });
-    const needsAccess = toWei(video.priceSTRM) > 0n && video.creator.userId !== userId;
-    let accessUntil: Date | null = null;
-    let action: HeartbeatResponse['action'] = 'continue';
-    if (needsAccess) {
-      const purchase = await tx.videoPurchase.findFirst({ where: { userId, videoId: s.videoId, expiresAt: { gt: now } }, orderBy: { expiresAt: 'desc' }, select: { expiresAt: true } });
-      if (purchase) accessUntil = purchase.expiresAt;
-      else action = 'stop';
-    }
+    // Playback is never stopped from here: the segment route refuses unpaid pieces once the balance is gone, and pieces
+    // already paid for keep playing. The heartbeat reports how much new video the balance still covers.
+    const rate = toWei(s.ratePerMinuteSTRM);
     const available = (await getBalances(tx, userId)).available;
+    const paid = await tx.paidSegment.aggregate({ where: { userId, videoId: s.videoId }, _sum: { durationMs: true } });
     const response: HeartbeatResponse = {
       sequence: input.sequence,
       verifiedSeconds: verified,
       chargedWei: weiToString(charged),
       availableWei: weiToString(available),
-      secondsRemaining: null,
-      action,
-      ...(action === 'stop' ? { reason: 'ACCESS_EXPIRED' as const } : {}),
-      accessUntil: accessUntil ? accessUntil.toISOString() : null,
+      secondsRemaining: rate > 0n ? Number((available * 60n) / rate) : null,
+      action: 'continue',
+      paidSeconds: Math.floor((paid._sum.durationMs ?? 0) / 1000),
+      accessUntil: null,
     };
 
-    let outcome: FinalizeOutcome | null = null;
-    if (action === 'stop') {
-      await tx.watchSession.update({ where: { id: sessionId }, data: { lastHeartbeatResponse: response as unknown as Prisma.InputJsonValue } });
-      outcome = await finalizeInTx(ctx, tx, sessionId, 'ACCESS_EXPIRED', feeBps);
-    } else {
-      await tx.watchSession.update({ where: { id: sessionId }, data: { lastHeartbeatResponse: response as unknown as Prisma.InputJsonValue } });
-    }
-    return { response, renewCookie: action !== 'stop', outcome, verified };
+    await tx.watchSession.update({ where: { id: sessionId }, data: { lastHeartbeatResponse: response as unknown as Prisma.InputJsonValue } });
+    return { response, renewCookie: true, verified };
   });
 
-  await ctx.redis.set(verifiedKey(sessionId), String(result.verified), 'EX', 86_400).catch(() => undefined);
-  if (result.outcome) await afterFinalize(ctx, sessionId, result.outcome);
   return { response: result.response, renewCookie: result.renewCookie };
 }
 
@@ -314,20 +308,12 @@ export async function listHistory(ctx: AppContext, userId: string, cursor: strin
   const page = rows.slice(0, limit);
   const videos = await decorateVideos(ctx, page.map((r) => r.video), userId);
   const byId = new Map(videos.map((v) => [v.id, v]));
-  const purchases = await ctx.prisma.videoPurchase.findMany({
-    where: { userId, videoId: { in: page.map((r) => r.videoId) } },
-    orderBy: { createdAt: 'desc' },
-    select: { videoId: true, amountSTRM: true, createdAt: true },
-  });
-  const paidFor = (videoId: string, at: Date): string => {
-    const p = purchases.find((x) => x.videoId === videoId && x.createdAt <= at);
-    return p ? toWei(p.amountSTRM).toString() : '0';
-  };
+
   const items: HistoryItem[] = page.map((r) => ({
     sessionId: r.id,
     video: byId.get(r.videoId) as VideoDto,
     watchedSeconds: r.verifiedDurationSeconds,
-    paidWei: paidFor(r.videoId, r.startedAt),
+    paidWei: toWei(r.chargedSTRM).toString(),
     lastPositionSec: Math.floor(r.lastPlaybackTime),
     watchedAt: r.startedAt.toISOString(),
   }));

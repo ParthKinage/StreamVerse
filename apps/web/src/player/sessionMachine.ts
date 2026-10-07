@@ -1,4 +1,4 @@
-import type { HeartbeatResponse, StartSessionResponse } from '@tesor_gp/shared';
+import { LOW_BALANCE_SECONDS, type HeartbeatResponse, type StartSessionResponse } from '@tesor_gp/shared';
 
 /**
  * Pure state machine for a billed watch session. The hook that owns timers and network calls feeds it events;
@@ -21,7 +21,11 @@ export interface SessionState {
   missedBeats: number;
   heartbeatIntervalSec: number;
   free: boolean;
-  /** End of the paid access window (ISO), when the video was bought. */
+  /** The rate this session is billed at (per minute, charged per second sent). */
+  ratePerMinuteWei: string;
+  /** Seconds of this video already paid for (free to watch again). */
+  paidSeconds: number;
+  /** Always null since per-second billing replaced the timed unlock; kept for older responses. */
   accessUntil: string | null;
   resumePositionSec: number;
   verifiedSeconds: number;
@@ -56,6 +60,8 @@ export const initialSessionState: SessionState = {
   missedBeats: 0,
   heartbeatIntervalSec: 10,
   free: false,
+  ratePerMinuteWei: '0',
+  paidSeconds: 0,
   accessUntil: null,
   resumePositionSec: 0,
   verifiedSeconds: 0,
@@ -88,7 +94,7 @@ export const END_MESSAGES: Record<EndKind, string> = {
   user: 'Session ended.',
   superseded: 'Playback started in another tab or device, so this session was ended.',
   timeout: 'This session timed out because we stopped hearing from the player. Press play to start a new one.',
-  access: 'Your access to this video has ended, so playback stopped.',
+  access: 'Your balance has run out, so playback stopped. The seconds you have paid for stay free to watch again.',
   unknown: 'This session has ended.',
 };
 
@@ -106,6 +112,8 @@ export function sessionReducer(state: SessionState, event: SessionEvent): Sessio
         manifestUrl: r.manifestUrl,
         heartbeatIntervalSec: r.heartbeatIntervalSec,
         free: r.free,
+        ratePerMinuteWei: r.ratePerMinuteWei ?? '0',
+        paidSeconds: r.paidSeconds ?? 0,
         accessUntil: r.accessUntil,
         resumePositionSec: r.resumePositionSec,
         availableWei: r.availableWei,
@@ -129,7 +137,8 @@ export function sessionReducer(state: SessionState, event: SessionEvent): Sessio
         chargedWei: r.chargedWei,
         availableWei: r.availableWei,
         secondsRemaining: r.secondsRemaining,
-        lowBalance: r.action === 'low_balance',
+        paidSeconds: r.paidSeconds ?? state.paidSeconds,
+        lowBalance: r.action === 'low_balance' || (!state.free && r.secondsRemaining !== null && r.secondsRemaining < LOW_BALANCE_SECONDS),
         accessUntil: r.accessUntil ?? state.accessUntil,
         message: stopped ? END_MESSAGES.access : null,
         endKind: stopped ? 'access' : null,

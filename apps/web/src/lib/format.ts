@@ -90,3 +90,8 @@ export function formatViews(n: number): string {
 export function priceLabel(wei: string): string {
   return toBig(wei) === 0n ? 'Free' : money(wei);
 }
+
+/** A creator's rate, e.g. "2 STRM/min", or "Free". Viewers pay it per second they are sent. */
+export function rateLabel(ratePerMinuteWei: string): string {
+  return toBig(ratePerMinuteWei) === 0n ? 'Free' : `${money(ratePerMinuteWei)}/min`;
+}

@@ -9,7 +9,7 @@ const started: StartSessionResponse = {
   heartbeatIntervalSec: 10,
   resumePositionSec: 42,
   availableWei: '10000000000000000000',
-  free: false,
+  free: false, ratePerMinuteWei: '0', paidSeconds: 0,
   accessUntil: '2026-10-06T10:00:00.000Z',
 };
 const beat = (over: Partial<HeartbeatResponse> = {}): HeartbeatResponse => ({

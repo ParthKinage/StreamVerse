@@ -4,7 +4,7 @@ import { test, expect, parseEther } from '../fixtures';
  * Runs only with E2E_WALLET_MODE=managed. Nobody in this scenario has a browser wallet or any gas: the platform gives
  * each account a wallet, sells coins, moves the payment on-chain and pays the creator out.
  */
-test('built-in wallets: sign up, buy coins, unlock a video and pay the creator, all without a browser wallet', async ({ page, platform, catalog, helpers }) => {
+test('built-in wallets: sign up, buy coins, watch a paid video and pay the creator, all without a browser wallet', async ({ page, platform, catalog, helpers }) => {
   const username = platform.uniq('walletless');
   await page.goto('/register');
   await page.getByLabel('Email').fill(`${username}@e2e.test`);
@@ -35,23 +35,27 @@ test('built-in wallets: sign up, buy coins, unlock a video and pay the creator, 
   await expect(page.getByTestId('tx-row').filter({ hasText: 'Bought with' })).toContainText('Confirmed');
   expect(await platform.escrowOf(viewerAddress)).toBe(parseEther('150'));
 
-  // Unlock a 5 STRM video. Access is immediate; the payment settles on-chain shortly after.
+  // Watch some of a paid video. Playback starts at once; what was watched settles on-chain after leaving the page.
   await page.goto(`/watch/${catalog.mainVideoId}`);
-  await helpers.unlock(page);
+  await helpers.play(page);
+  await expect.poll(() => helpers.watchedSeconds(page), { timeout: 60_000 }).toBeGreaterThanOrEqual(8);
+  await page.goto('/wallet');
   const creatorAddress = catalog.creator.address;
-  await expect.poll(() => platform.escrowOf(viewerAddress), { timeout: 90_000 }).toBe(parseEther('145'));
-  // The test chain takes a 10% commission: the creator is owed 4.5 of the 5 STRM.
-  await expect.poll(() => platform.creatorEarningsOf(creatorAddress), { timeout: 30_000 }).toBe(parseEther('4.5'));
+  await expect.poll(() => platform.escrowOf(viewerAddress), { timeout: 90_000 }).toBeLessThan(parseEther('150'));
+  const paid = parseEther('150') - (await platform.escrowOf(viewerAddress));
+  // The test chain takes a 10% commission.
+  const creatorShare = paid - (paid * 1000n) / 10_000n;
+  await expect.poll(() => platform.creatorEarningsOf(creatorAddress), { timeout: 30_000 }).toBe(creatorShare);
 
   // The creator signs in and gets paid with one click.
   await page.getByRole('button', { name: 'Log out' }).click();
   await helpers.login(page, catalog.creator);
   await page.goto('/wallet');
-  await expect(page.getByTestId('earnings-claimable')).toContainText('4.5', { timeout: 60_000 });
+  await expect(page.getByTestId('payout')).toBeEnabled({ timeout: 60_000 });
   const before = await platform.strmBalance(creatorAddress);
   await page.getByTestId('payout').click();
-  await expect.poll(() => platform.strmBalance(creatorAddress), { timeout: 60_000 }).toBe(before + parseEther('4.5'));
-  await expect(page.getByTestId('earnings-paid')).toContainText('4.5', { timeout: 60_000 });
+  await expect.poll(() => platform.strmBalance(creatorAddress), { timeout: 60_000 }).toBe(before + creatorShare);
+  await expect(page.getByTestId('earnings-paid')).toBeVisible({ timeout: 60_000 });
   expect(await platform.creatorEarningsOf(creatorAddress)).toBe(0n);
   expect(await platform.provider.getBalance(creatorAddress)).toBe(0n);
 });

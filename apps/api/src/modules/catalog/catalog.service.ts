@@ -10,23 +10,22 @@ export const publicVideoWhere: Prisma.VideoWhereInput = { isPublished: true, pro
 export async function decorateVideos(ctx: AppContext, videos: VideoWithCreator[], viewerId?: string): Promise<VideoDto[]> {
   if (videos.length === 0) return [];
   const ids = videos.map((v) => v.id);
-  const now = ctx.now();
-  const [likeCounts, liked, watch, purchases] = await Promise.all([
+  const [likeCounts, liked, watch, paid] = await Promise.all([
     ctx.prisma.videoLike.groupBy({ by: ['videoId'], where: { videoId: { in: ids } }, _count: { _all: true } }),
     viewerId ? ctx.prisma.videoLike.findMany({ where: { userId: viewerId, videoId: { in: ids } }, select: { videoId: true } }) : Promise.resolve([]),
     viewerId ? ctx.prisma.watchlistItem.findMany({ where: { userId: viewerId, videoId: { in: ids } }, select: { videoId: true } }) : Promise.resolve([]),
     viewerId
-      ? ctx.prisma.videoPurchase.findMany({ where: { userId: viewerId, videoId: { in: ids }, expiresAt: { gt: now } }, select: { videoId: true, expiresAt: true }, orderBy: { expiresAt: 'asc' } })
+      ? ctx.prisma.paidSegment.groupBy({ by: ['videoId'], where: { userId: viewerId, videoId: { in: ids } }, _sum: { durationMs: true } })
       : Promise.resolve([]),
   ]);
   const counts = new Map(likeCounts.map((c) => [c.videoId, c._count._all]));
   const likedSet = new Set(liked.map((l) => l.videoId));
   const watchSet = new Set(watch.map((w) => w.videoId));
-  const accessUntil = new Map(purchases.map((p) => [p.videoId, p.expiresAt.toISOString()]));
+  const paidSeconds = new Map(paid.map((p) => [p.videoId, Math.floor((p._sum.durationMs ?? 0) / 1000)]));
   return videos.map((v) =>
     videoToDto(v, {
       likesCount: counts.get(v.id) ?? 0,
-      ...(viewerId ? { liked: likedSet.has(v.id), inWatchlist: watchSet.has(v.id), accessUntil: accessUntil.get(v.id) ?? null } : {}),
+      ...(viewerId ? { liked: likedSet.has(v.id), inWatchlist: watchSet.has(v.id), paidSeconds: paidSeconds.get(v.id) ?? 0 } : {}),
     }),
   );
 }

@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { MAX_VIDEO_PRICE_STRM, MAX_TAGS, MAX_VIDEO_TITLE, parseSTRM, weiToString } from '@tesor_gp/shared';
+import { MAX_RATE_PER_MINUTE_STRM, MAX_TAGS, MAX_VIDEO_TITLE, parseSTRM, weiToString } from '@tesor_gp/shared';
 import { Field } from '../../components/Field';
 import { getMoneyFormat, isBankMode, moneyUnit } from '../../lib/format';
 import { formatSTRM } from '@tesor_gp/shared';
@@ -9,26 +9,26 @@ export interface VideoFormValues {
   description: string;
   category: string;
   tags: string;
-  /** Price of the whole video, as typed. */
-  price: string;
+  /** Rate per minute watched, as typed. */
+  rate: string;
 }
 
-export function validateVideoForm(v: VideoFormValues, maxPrice = MAX_VIDEO_PRICE_STRM): { errors: Record<string, string>; priceWei?: string; tags?: string[] } {
+export function validateVideoForm(v: VideoFormValues, maxRate = MAX_RATE_PER_MINUTE_STRM): { errors: Record<string, string>; rateWei?: string; tags?: string[] } {
   const errors: Record<string, string> = {};
   if (!v.title.trim()) errors.title = 'Give your video a title';
   else if (v.title.trim().length > MAX_VIDEO_TITLE) errors.title = `Title must be ${MAX_VIDEO_TITLE} characters or fewer`;
-  let priceWei: string | undefined;
-  const price = v.price.trim();
-  if (!/^\d+(\.\d{1,18})?$/.test(price)) errors.price = 'Enter a price like 20 (or 0 for free)';
+  let rateWei: string | undefined;
+  const rate = v.rate.trim();
+  if (!/^\d+(\.\d{1,18})?$/.test(rate)) errors.rate = 'Enter a rate like 2 (or 0 for free)';
   else {
-    const wei = parseSTRM(price);
-    if (wei > parseSTRM(String(maxPrice))) errors.price = isBankMode() ? `Price can be at most ${getMoneyFormat().symbol}${maxPrice}` : `Price can be at most ${maxPrice} STRM`;
-    else priceWei = weiToString(wei);
+    const wei = parseSTRM(rate);
+    if (wei > parseSTRM(String(maxRate))) errors.rate = isBankMode() ? `The rate can be at most ${getMoneyFormat().symbol}${maxRate} per minute` : `The rate can be at most ${maxRate} STRM per minute`;
+    else rateWei = weiToString(wei);
   }
   const tags = v.tags.split(',').map((t) => t.trim().toLowerCase()).filter(Boolean);
   if (tags.length > MAX_TAGS) errors.tags = `Use at most ${MAX_TAGS} tags`;
-  const out: { errors: Record<string, string>; priceWei?: string; tags?: string[] } = { errors, tags };
-  if (priceWei !== undefined) out.priceWei = priceWei;
+  const out: { errors: Record<string, string>; rateWei?: string; tags?: string[] } = { errors, tags };
+  if (rateWei !== undefined) out.rateWei = rateWei;
   return out;
 }
 
@@ -58,7 +58,14 @@ export function VideoFields({ values, onChange, errors, categories, children }: 
         </select>
       </div>
       <Field label="Tags" value={values.tags} onChange={set('tags')} error={errors.tags} hint="Comma separated, up to 10" />
-      <Field label={`Price (${moneyUnit()})`} inputMode="decimal" value={values.price} onChange={set('price')} error={errors.price} hint={`One price for the whole video; 0 makes it free. Maximum ${MAX_VIDEO_PRICE_STRM}. Viewers get time-limited access after paying.`} />
+      <Field
+        label={`Rate per minute (${moneyUnit()})`}
+        inputMode="decimal"
+        value={values.rate}
+        onChange={set('rate')}
+        error={errors.rate}
+        hint={`Viewers pay this per minute, charged by the second they actually watch. Rewatching is free and skipped parts are never charged. 0 makes the video free. Maximum ${MAX_RATE_PER_MINUTE_STRM}.`}
+      />
       {children}
     </>
   );

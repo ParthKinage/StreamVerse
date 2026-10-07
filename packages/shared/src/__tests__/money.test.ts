@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { costForSeconds, decimalToWei, formatSTRM, formatSTRMFull, parseSTRM, splitFee, stringToWei, weiToDecimal } from '../money';
+import { costForMs, costForSeconds, decimalToWei, formatSTRM, formatSTRMFull, parseSTRM, splitFee, stringToWei, weiToDecimal } from '../money';
 
 describe('parseSTRM', () => {
   it('parses whole, fractional and 18-decimal values exactly', () => {
@@ -64,5 +64,19 @@ describe('decimal conversions', () => {
   it('validates wei strings', () => {
     expect(stringToWei('42')).toBe(42n);
     expect(() => stringToWei('4.2')).toThrow(RangeError);
+  });
+});
+
+describe('costForMs', () => {
+  const rate = parseSTRM('60'); // 1 STRM per second
+  it('charges pieces of video that are not whole seconds', () => {
+    expect(costForMs(4000, rate)).toBe(parseSTRM('4'));
+    expect(costForMs(3960, rate)).toBe(parseSTRM('3.96'));
+    expect(costForMs(0, rate)).toBe(0n);
+    expect(costForMs(1, 59n)).toBe(0n); // floors, never rounds up
+  });
+  it('rejects negative input', () => {
+    expect(() => costForMs(-1n, rate)).toThrow(RangeError);
+    expect(costForMs(-5, rate)).toBe(0n);
   });
 });

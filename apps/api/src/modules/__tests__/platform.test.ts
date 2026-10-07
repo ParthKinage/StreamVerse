@@ -79,7 +79,8 @@ describe('catalog', () => {
     const detail = await h.req().get(`/api/v1/videos/${v.id}`);
     expect(detail.status).toBe(200);
     expect(detail.body.title).toBe('Detail me');
-    expect(detail.body.priceWei).toBe('5000000000000000000');
+    expect(detail.body.ratePerMinuteWei).toBe('15000000000000000000');
+    expect(detail.body.priceWei).toBe('6000000000000000000'); // 24 s at 15 per minute
     expect((await h.req().get(`/api/v1/videos/${hidden.id}`)).status).toBe(404);
     expect((await h.req().get('/api/v1/videos/nope')).status).toBe(404);
     expect((await h.req().get('/api/v1/categories')).body.categories.map((c: { name: string }) => c.name)).toContain('Music');
@@ -109,7 +110,8 @@ describe('creator studio', () => {
     const user = await registerUser(h);
     expect((await authed(h, user).post('/api/v1/creator/profile').send({ channelName: 'My Channel' })).status).toBe(201);
     const source = path.join(inject('fixtureDir'), 'source.mp4');
-    const res = await upload(user.token, source, { title: 'First upload', description: 'hello', category: 'Tech', tags: 'a,b', priceWei: '500000000000000000' });
+    const res = await upload(user.token, source, { title: 'First upload', description: 'hello', category: 'Tech', tags: 'a,b', ratePerMinuteWei: '500000000000000000' });
+    expect(res.body.ratePerMinuteWei).toBe('500000000000000000');
     expect(res.status).toBe(201);
     expect(res.body.processingStatus).toBe('PENDING');
     expect(res.body.isPublished).toBe(false);
@@ -134,7 +136,7 @@ describe('creator studio', () => {
     expect((await authed(h, user).get('/api/v1/creator/videos')).body.items).toHaveLength(0);
   });
 
-  it('rejects wrong types, non-video content and over-priced videos; cleans up the file', async () => {
+  it('rejects wrong types, non-video content and rates above the maximum; cleans up the file', async () => {
     const user = await registerUser(h);
     await authed(h, user).post('/api/v1/creator/profile').send({ channelName: 'Tiny Channel' });
     const before = fs.readdirSync(h.uploadDir).length;
@@ -152,7 +154,7 @@ describe('creator studio', () => {
     expect(notVideo.status).toBe(400);
     expect(notVideo.body.error.code).toBe('UPLOAD_INVALID');
 
-    const pricey = await upload(user.token, path.join(inject('fixtureDir'), 'source.mp4'), { ...fields, priceWei: '1000000000000000000000000' });
+    const pricey = await upload(user.token, path.join(inject('fixtureDir'), 'source.mp4'), { ...fields, ratePerMinuteWei: '1000000000000000000000000' });
     expect(pricey.status).toBe(400);
     expect(fs.readdirSync(h.uploadDir).length).toBe(before);
     expect(await h.ctx.prisma.video.count()).toBe(0);

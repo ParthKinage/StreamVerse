@@ -5,7 +5,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, inject, it, vi } fro
 import { S3Store } from '@tesor_gp/storage';
 import { authed, createHarness, registerUser, resetDb, uniq, type Harness, type TestUser } from '../../../test/harness';
 import { MEDIA_MISSING_REASON, reconcileMissingMedia } from '../reconcile';
-import { PlaylistCache, signMediaPlaylist, resolveMediaKey } from '../../playback/playlist';
+import { PlaylistCache, resolveMediaKey } from '../../playback/playlist';
 
 // Runs against the local S3-compatible gateway from docker-compose.yml (`docker compose up -d s3`).
 const S3 = {
@@ -47,7 +47,7 @@ async function creator(harness: Harness = h): Promise<TestUser> {
 async function storedVideo(owner: TestUser, opts: { upload?: boolean } = {}): Promise<string> {
   const profile = await h.ctx.prisma.creatorProfile.findUniqueOrThrow({ where: { userId: owner.id } });
   const video = await h.ctx.prisma.video.create({
-    data: { title: uniq('v'), description: 'stored', category: 'Education', tags: ['test'], creatorId: profile.id, originalFilePath: 'originals/x/source.mp4', priceSTRM: '0', processingStatus: 'COMPLETED', transcodeProgress: 100, durationSeconds: 24, isPublished: true },
+    data: { title: uniq('v'), description: 'stored', category: 'Education', tags: ['test'], creatorId: profile.id, originalFilePath: 'originals/x/source.mp4', ratePerMinuteSTRM: '0', processingStatus: 'COMPLETED', transcodeProgress: 100, durationSeconds: 24, isPublished: true },
   });
   const prefix = `hls/${video.id}/v1/`;
   if (opts.upload !== false) {
@@ -168,7 +168,7 @@ describe('playback from object storage', () => {
     return { videoId, sid: res.body.sessionId as string, cookie };
   }
 
-  it('serves playlists from the API and every segment from a signed bucket URL', async () => {
+  it('serves playlists from the API and sends each piece from the bucket through a short signed redirect', async () => {
     const { sid, cookie } = await playing();
     const master = await h.req().get(`/playback/${sid}/master.m3u8`).set('Cookie', cookie);
     expect(master.status).toBe(200);
@@ -177,23 +177,42 @@ describe('playback from object storage', () => {
 
     const variant = await h.req().get(`/playback/${sid}/360p/index.m3u8`).set('Cookie', cookie);
     expect(variant.status).toBe(200);
-    const urls = variant.text.split('\n').filter((l) => l.startsWith('http'));
-    expect(urls).toHaveLength(6);
+    expect(variant.text).toContain('seg_000.ts');
     expect(variant.text).toContain('#EXT-X-ENDLIST');
-    // later segments stay valid longer, in step with when they play
-    const expires = urls.map((u) => Number(new URL(u).searchParams.get('X-Amz-Expires')));
-    expect(expires[0]).toBe(h.env.SEGMENT_URL_SLACK_SEC);
-    expect(expires[5]).toBe(h.env.SEGMENT_URL_SLACK_SEC + 20);
 
-    const seg = await fetch(urls[0]!);
+    // Each piece passes the API (to be paid for), which redirects to a signed bucket URL valid for two minutes.
+    const piece = await h.req().get(`/playback/${sid}/360p/seg_000.ts`).set('Cookie', cookie);
+    expect(piece.status).toBe(302);
+    const location = piece.headers.location as string;
+    expect(new URL(location).searchParams.get('X-Amz-Expires')).toBe('120');
+    const seg = await fetch(location);
     expect(seg.status).toBe(200);
     expect(seg.headers.get('content-type')).toBe('video/mp2t');
     expect((await seg.arrayBuffer()).byteLength).toBe(fs.statSync(path.join(inject('fixtureDir'), '360p', 'seg_000.ts')).size);
   });
 
-  it('never serves segments through the API, refuses path tricks and missing cookies', async () => {
+  it('charges a paid piece once before redirecting, and refuses it when the balance cannot cover it', async () => {
+    const owner = await creator();
+    const videoId = await storedVideo(owner);
+    await h.ctx.prisma.video.update({ where: { id: videoId }, data: { ratePerMinuteSTRM: '15' } }); // 1 per 4 s piece
+    const viewer = await registerUser(h);
+    await authed(h, viewer).post('/api/v1/bank/topup').send({ accountId: 'demo-savings', amountWei: (10n ** 19n).toString() }); // 10
+    const r = await authed(h, viewer).post('/api/v1/watch/sessions').send({ videoId });
+    const cookie = (r.headers['set-cookie'] as unknown as string[]).find((c) => c.startsWith('pbt='))!.split(';')[0]!;
+    const sid = r.body.sessionId as string;
+    expect((await h.req().get(`/playback/${sid}/360p/seg_000.ts`).set('Cookie', cookie)).status).toBe(302);
+    expect((await h.req().get(`/playback/${sid}/360p/seg_000.ts`).set('Cookie', cookie)).status).toBe(302); // again: free
+    const session = await h.ctx.prisma.watchSession.findUniqueOrThrow({ where: { id: sid } });
+    expect(session.chargedSTRM.toFixed()).toBe('1');
+    await authed(h, viewer).post('/api/v1/bank/withdraw').send({ accountId: 'demo-current', amountWei: (85n * 10n ** 17n).toString() }); // 0.5 left
+    const refused = await h.req().get(`/playback/${sid}/360p/seg_001.ts`).set('Cookie', cookie);
+    expect(refused.status).toBe(402);
+    expect(refused.body.error.code).toBe('INSUFFICIENT_BALANCE');
+  });
+
+  it('refuses pieces outside the playlist, path tricks and missing cookies', async () => {
     const { sid, cookie } = await playing();
-    expect((await h.req().get(`/playback/${sid}/360p/seg_000.ts`).set('Cookie', cookie)).status).toBe(404);
+    expect((await h.req().get(`/playback/${sid}/360p/seg_999.ts`).set('Cookie', cookie)).status).toBe(404);
     expect((await h.req().get(`/playback/${sid}/../../other/master.m3u8`).set('Cookie', cookie)).status).toBe(404);
     expect((await h.req().get(`/playback/${sid}/master.m3u8`)).status).toBe(401);
   });
@@ -255,15 +274,7 @@ describe('reconciling missing media', () => {
   });
 });
 
-describe('playlist signing', () => {
-  const sign = async (key: string, ttl: number): Promise<string> => `https://cdn.test/${key}?ttl=${ttl}`;
-
-  it('signs each segment with an expiry that follows its start time', async () => {
-    const text = '#EXTM3U\n#EXT-X-TARGETDURATION:4\n#EXTINF:4.0,\nseg_000.ts\n#EXTINF:3.5,\nseg_001.ts\n#EXT-X-ENDLIST\n';
-    const out = await signMediaPlaylist(text, 'hls/v/1/360p/index.m3u8', 'hls/v/1/master.m3u8', sign, 100);
-    expect(out).toBe('#EXTM3U\n#EXT-X-TARGETDURATION:4\n#EXTINF:4.0,\nhttps://cdn.test/hls/v/1/360p/seg_000.ts?ttl=100\n#EXTINF:3.5,\nhttps://cdn.test/hls/v/1/360p/seg_001.ts?ttl=104\n#EXT-X-ENDLIST\n');
-  });
-
+describe('playlists', () => {
   it('caches playlists for a while, not forever, and never caches a miss', async () => {
     let now = 0;
     let loads = 0;
@@ -280,8 +291,7 @@ describe('playlist signing', () => {
     expect(loads).toBe(4);
   });
 
-  it('refuses segment paths outside the video folder', async () => {
-    await expect(signMediaPlaylist('#EXTINF:4,\n../../other/seg.ts\n', 'hls/v/1/360p/index.m3u8', 'hls/v/1/master.m3u8', sign, 100)).rejects.toThrow(/outside/);
+  it('refuses paths outside the video folder', async () => {
     expect(resolveMediaKey('hls/v/1/master.m3u8', '../2/master.m3u8')).toBeUndefined();
     expect(resolveMediaKey('hls/v/1/master.m3u8', 'https://evil.test/x.ts')).toBeUndefined();
     expect(resolveMediaKey('hls/v/1/master.m3u8', '360p/index.m3u8')).toBe('hls/v/1/360p/index.m3u8');

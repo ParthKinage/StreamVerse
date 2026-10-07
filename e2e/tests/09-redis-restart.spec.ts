@@ -7,8 +7,7 @@ test('a Redis restart keeps users signed in and playback recovers', async ({ pag
   await helpers.login(page, acct);
 
   await page.goto(`/watch/${catalog.mainVideoId}`);
-  await helpers.unlock(page);
-  await page.getByTestId('start-playback').click();
+  await helpers.play(page);
   await expect.poll(() => helpers.watchedSeconds(page), { timeout: 60_000 }).toBeGreaterThanOrEqual(6);
 
   await platform.stack.restartRedis();

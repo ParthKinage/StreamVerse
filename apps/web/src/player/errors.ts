@@ -1,5 +1,5 @@
 /** What went wrong with playback, in words a viewer understands, and what the player should do about it. */
-export type PlaybackProblemKind = 'not-found' | 'not-authorised' | 'processing' | 'network' | 'media' | 'unsupported';
+export type PlaybackProblemKind = 'not-found' | 'not-authorised' | 'processing' | 'network' | 'media' | 'unsupported' | 'balance';
 
 export interface PlaybackProblem {
   kind: PlaybackProblemKind;
@@ -44,6 +44,9 @@ export function problemFromVideo(video: { processingStatus: string; transcodePro
 /** Turns a fatal hls.js error that recovery could not fix into a message and a retry action. */
 export function describeFailure(f: HlsFailure): PlaybackProblem {
   if (f.type === 'networkError') {
+    if (f.status === 402) {
+      return { kind: 'balance', message: 'Your balance has run out. Add money to keep watching; the seconds you have paid for stay free.', retry: 'reload' };
+    }
     if (f.status === 401 || f.status === 403) {
       return { kind: 'not-authorised', message: 'Your viewing session has expired or is not allowed for this video.', retry: 'new-session' };
     }

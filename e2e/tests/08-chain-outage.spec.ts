@@ -1,6 +1,6 @@
 import { test, expect } from '../fixtures';
 
-test('unlocking and playback survive a chain outage and settlement completes after recovery', async ({ page, platform, catalog, helpers }) => {
+test('paid playback survives a chain outage and settlement completes after recovery', async ({ page, platform, catalog, helpers }) => {
   const acct = await platform.newAccount({ strm: '10' });
   await platform.deposit(acct, '5');
   await helpers.withWallet(page, acct.key);
@@ -8,8 +8,7 @@ test('unlocking and playback survive a chain outage and settlement completes aft
 
   await page.goto(`/watch/${catalog.mainVideoId}`);
   platform.stack.setChainDown(true);
-  await helpers.unlock(page); // payment is reserved in the database; the chain settles later
-  await page.getByTestId('start-playback').click();
+  await helpers.play(page); // charges are reserved in the database; the chain settles later
   await expect.poll(() => helpers.watchedSeconds(page), { timeout: 60_000 }).toBeGreaterThanOrEqual(5);
   await page.goto('/');
 

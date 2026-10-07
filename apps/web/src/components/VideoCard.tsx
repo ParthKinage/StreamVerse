@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import type { VideoDto } from '@tesor_gp/shared';
-import { formatDuration, formatViews, priceLabel, moneyTitle, timeAgo } from '../lib/format';
+import { formatDuration, formatViews, moneyTitle, rateLabel, timeAgo } from '../lib/format';
 
 export function VideoCard({ video, progress }: { video: VideoDto; progress?: number | undefined }): JSX.Element {
   return (
@@ -26,8 +26,8 @@ export function VideoCard({ video, progress }: { video: VideoDto; progress?: num
         <p className="muted small">
           {formatViews(video.viewsCount)} · {timeAgo(video.createdAt)}
         </p>
-        <p className="rate" title={moneyTitle(video.priceWei)}>
-          {priceLabel(video.priceWei)}{video.accessUntil ? ' · unlocked' : ''}
+        <p className="rate" title={moneyTitle(video.ratePerMinuteWei)}>
+          {rateLabel(video.ratePerMinuteWei)}
         </p>
       </div>
     </article>

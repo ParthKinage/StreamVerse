@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
 import Hls, { type LoadPolicy } from 'hls.js';
 import type { VideoDto } from '@tesor_gp/shared';
-import { formatDuration, priceLabel } from '../lib/format';
+import { formatDuration, rateLabel } from '../lib/format';
 import { CostMeter } from './CostMeter';
 import { MAX_NETWORK_RETRIES, MAX_URL_REFRESHES, describeFailure, isTransientStatus, networkRetryDelayMs, problemFromVideo, sendCredentials, type PlaybackProblem } from './errors';
 import { readNumber, writeValue } from './storage';
@@ -15,8 +15,10 @@ interface Props {
   video: VideoDto;
   session: PlaybackSession;
   videoRef: RefObject<HTMLVideoElement>;
-  /** Opens the unlock flow (buy access, or add money first). */
-  onRequestUnlock(): void;
+  /** Opens the add-money / buy-coins dialog. */
+  onRequestTopUp(): void;
+  /** Wording of that button for the current payment mode ("Add money", "Buy coins", "Top up"). */
+  topUpLabel?: string;
   /** Why playback is not possible yet (sign in, unlock first, link a wallet). */
   blockedReason?: string | null;
 }
@@ -32,7 +34,7 @@ function withoutPermanentRetries(policy: LoadPolicy): LoadPolicy {
   };
 }
 
-export function Player({ video, session, videoRef, onRequestUnlock, blockedReason }: Props): JSX.Element {
+export function Player({ video, session, videoRef, onRequestTopUp, topUpLabel = 'Buy coins', blockedReason }: Props): JSX.Element {
   const { state } = session;
   const containerRef = useRef<HTMLDivElement>(null);
   const hlsRef = useRef<Hls | null>(null);
@@ -66,6 +68,10 @@ export function Player({ video, session, videoRef, onRequestUnlock, blockedReaso
           xhr.withCredentials = sendCredentials(url, window.location.origin);
         },
         enableWorker: true,
+        // Viewers pay for every piece the player fetches, so never buffer more than about 10 s ahead. hls.js raises
+        // maxBufferLength for low-bitrate video up to maxMaxBufferLength, so the ceiling has to be set too.
+        maxBufferLength: 10,
+        maxMaxBufferLength: 10,
         fragLoadPolicy: withoutPermanentRetries(Hls.DefaultConfig.fragLoadPolicy),
         playlistLoadPolicy: withoutPermanentRetries(Hls.DefaultConfig.playlistLoadPolicy),
         manifestLoadPolicy: withoutPermanentRetries(Hls.DefaultConfig.manifestLoadPolicy),
@@ -291,12 +297,15 @@ export function Player({ video, session, videoRef, onRequestUnlock, blockedReaso
               <button type="button" className="btn primary big" onClick={() => void startSession(state.resumePositionSec)} data-testid="start-playback">
                 {state.phase === 'error' ? 'Try again' : 'Play'}
               </button>
-              <p className="muted small">{priceLabel(video.priceWei)}{video.accessUntil ? ' · you have access to this video' : ''}</p>
+              <p className="muted small">
+                {rateLabel(video.ratePerMinuteWei)}
+                {video.paidSeconds ? ` · ${formatDuration(video.paidSeconds)} already paid, free to rewatch` : ''}
+              </p>
             </>
           )}
-          {state.errorCode === 'PURCHASE_REQUIRED' || state.errorCode === 'INSUFFICIENT_BALANCE' || state.errorCode === 'WALLET_NOT_LINKED' ? (
-            <button type="button" className="btn" onClick={onRequestUnlock}>
-              {state.errorCode === 'WALLET_NOT_LINKED' ? 'Connect wallet' : 'Unlock video'}
+          {state.errorCode === 'INSUFFICIENT_BALANCE' ? (
+            <button type="button" className="btn" onClick={onRequestTopUp} data-testid="player-top-up">
+              {topUpLabel}
             </button>
           ) : null}
         </div>
@@ -311,9 +320,9 @@ export function Player({ video, session, videoRef, onRequestUnlock, blockedReaso
       {showStopped ? (
         <div className="player-overlay" role="alert" data-testid="stopped">
           <p>{state.message}</p>
-          <p className="muted small">Your place is saved. Unlock the video again to continue from where you stopped.</p>
-          <button type="button" className="btn primary" onClick={onRequestUnlock}>
-            Unlock again
+          <p className="muted small">Your place is saved. Add money, then press Resume to carry on from where you stopped.</p>
+          <button type="button" className="btn primary" onClick={onRequestTopUp}>
+            {topUpLabel}
           </button>
         </div>
       ) : null}
@@ -330,9 +339,14 @@ export function Player({ video, session, videoRef, onRequestUnlock, blockedReaso
       {problem ? (
         <div className="player-overlay" role="alert" data-testid="playback-problem" data-kind={problem.kind}>
           <p>{problem.message}</p>
+          {problem.kind === 'balance' ? (
+            <button type="button" className="btn" onClick={onRequestTopUp} data-testid="player-top-up">
+              {topUpLabel}
+            </button>
+          ) : null}
           {problem.retry !== 'none' ? (
             <button type="button" className="btn primary" onClick={retry}>
-              Retry
+              {problem.kind === 'balance' ? 'Continue' : 'Retry'}
             </button>
           ) : null}
         </div>

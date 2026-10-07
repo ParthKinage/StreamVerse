@@ -22,9 +22,10 @@ export interface Account {
 export interface Catalog {
   creator: Account;
   mainVideoId: string;
-  mainPriceWei: bigint;
+  /** Rate per minute of the main video (each 4-second piece costs rate / 15). */
+  mainRateWei: bigint;
   priceyVideoId: string;
-  priceyPriceWei: bigint;
+  priceyRateWei: bigint;
   /** Duration of the seeded clips, used by the media stand-in. */
   clipSeconds: number;
 }
@@ -148,17 +149,38 @@ export class Platform {
     return (await this.coin().getFunction('balanceOf')(address)) as bigint;
   }
 
+  /** Plays `pieces` 4-second pieces of a video through the API exactly as a player does, then ends the session. */
+  async watchViaApi(acct: Pick<Account, 'token'>, videoId: string, pieces: number): Promise<void> {
+    const start = await fetch(`${this.stack.apiUrl}/api/v1/watch/sessions`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${acct.token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ videoId }),
+    });
+    const session = (await start.json()) as { sessionId: string; manifestUrl: string };
+    expect(start.status, JSON.stringify(session)).toBe(201);
+    const cookie = start.headers.getSetCookie().find((c) => c.startsWith('pbt='))!.split(';')[0]!;
+    const master = await (await fetch(`${this.stack.apiUrl}${session.manifestUrl}`, { headers: { Cookie: cookie } })).text();
+    const rendition = master.split(/\r?\n/).find((l) => l.endsWith('.m3u8'))!.split('/')[0]!;
+    for (let i = 0; i < pieces; i++) {
+      const piece = await fetch(`${this.stack.apiUrl}/playback/${session.sessionId}/${rendition}/seg_${String(i).padStart(3, '0')}.ts`, { headers: { Cookie: cookie } });
+      expect(piece.status).toBe(200);
+      await piece.arrayBuffer();
+    }
+    const end = await this.api(`/watch/sessions/${session.sessionId}/end`, { token: acct.token, body: {} });
+    expect(end.status).toBe(200);
+  }
+
   async makeCreator(acct: Account, channelName: string): Promise<void> {
     const r = await this.api('/creator/profile', { token: acct.token, body: { channelName } });
     expect(r.status, JSON.stringify(r.body)).toBe(201);
   }
 
-  async uploadVideo(acct: Account, file: string, fields: { title: string; priceWei: string; category?: string }): Promise<string> {
+  async uploadVideo(acct: Account, file: string, fields: { title: string; ratePerMinuteWei: string; category?: string }): Promise<string> {
     const form = new FormData();
     form.set('title', fields.title);
     form.set('description', 'End-to-end test video');
     form.set('category', fields.category ?? 'Education');
-    form.set('priceWei', fields.priceWei);
+    form.set('ratePerMinuteWei', fields.ratePerMinuteWei);
     form.set('file', new Blob([fs.readFileSync(file)], { type: 'video/mp4' }), path.basename(file));
     const r = await this.api<{ id: string }>('/creator/videos', { token: acct.token, form });
     expect(r.status, JSON.stringify(r.body)).toBe(201);
@@ -289,8 +311,8 @@ export interface PageHelpers {
   withWallet(page: Page, key: string): Promise<void>;
   login(page: Page, acct: Account): Promise<void>;
   watchedSeconds(page: Page): Promise<number>;
-  /** Clicks the Unlock button on a watch page and waits for the access line. */
-  unlock(page: Page): Promise<void>;
+  /** Presses Play on a watch page. Viewers pay per second as the video plays; there is nothing to buy first. */
+  play(page: Page): Promise<void>;
 }
 
 export const test = base.extend<{ platform: Platform; catalog: Catalog; helpers: PageHelpers; modeGuard: void }, { stack: Stack; platformW: Platform; catalogW: Catalog }>({
@@ -332,16 +354,17 @@ export const test = base.extend<{ platform: Platform; catalog: Catalog; helpers:
       makeClip(clip, clipSeconds);
       const creator = await p.newAccount({ prefix: 'creator' });
       await p.makeCreator(creator, 'E2E Channel');
-      const mainPriceWei = parseEther('5');
-      const priceyPriceWei = parseEther('8');
-      const mainVideoId = await p.uploadVideo(creator, clip, { title: 'E2E main video', priceWei: mainPriceWei.toString() });
-      const priceyVideoId = await p.uploadVideo(creator, clip, { title: 'E2E premium video', priceWei: priceyPriceWei.toString() });
+      // Rates that split evenly into 4-second pieces: 0.2 and 0.4 STRM per piece (5 and 10 for the whole 100 s).
+      const mainRateWei = parseEther('3');
+      const priceyRateWei = parseEther('6');
+      const mainVideoId = await p.uploadVideo(creator, clip, { title: 'E2E main video', ratePerMinuteWei: mainRateWei.toString() });
+      const priceyVideoId = await p.uploadVideo(creator, clip, { title: 'E2E premium video', ratePerMinuteWei: priceyRateWei.toString() });
       await p.waitForTranscode(creator, mainVideoId);
       await p.waitForTranscode(creator, priceyVideoId);
       await p.publish(creator, mainVideoId);
       await p.publish(creator, priceyVideoId);
       fs.rmSync(dir, { recursive: true, force: true });
-      await use({ creator, mainVideoId, mainPriceWei, priceyVideoId, priceyPriceWei, clipSeconds });
+      await use({ creator, mainVideoId, mainRateWei, priceyVideoId, priceyRateWei, clipSeconds });
     },
     { scope: 'worker', timeout: 300_000 },
   ],
@@ -367,9 +390,9 @@ export const test = base.extend<{ platform: Platform; catalog: Catalog; helpers:
         await page.getByRole('button', { name: 'Log in' }).click();
         await expect(page.getByRole('link', { name: acct.username })).toBeVisible();
       },
-      async unlock(page) {
-        await page.getByTestId('unlock-video').click();
-        await expect(page.getByTestId('access-until')).toBeVisible({ timeout: 30_000 });
+      async play(page) {
+        await page.getByTestId('start-playback').click();
+        await expect(page.getByTestId('cost-meter')).toBeVisible({ timeout: 30_000 });
       },
       async watchedSeconds(page) {
         const text = (await page.getByTestId('meter-time').textContent()) ?? '0:00';
