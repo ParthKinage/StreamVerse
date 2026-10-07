@@ -8,7 +8,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { loadConfig } from '../config';
 import { probe } from '../ffmpeg';
 import { S3Store } from '@tesor_gp/storage';
-import { MediaError } from '../ffmpeg';
+import { MediaError, parseMaxRssKiB } from '../ffmpeg';
 import { transcodeFromStore } from '../storage';
 import { buildLadder, buildMasterPlaylist, parseLadder, renditionSize, transcode } from '../transcode';
 import { startWorker } from '../worker';
@@ -44,6 +44,12 @@ describe('ladder', () => {
     const src = { durationSeconds: 10, width: 1280, height: 720, hasAudio: true };
     expect(renditionSize(src, buildLadder(720)[0]!)).toEqual({ width: 640, height: 360 });
     expect(renditionSize({ ...src, width: 320, height: 180 }, buildLadder(180)[1]!)).toEqual({ width: 320, height: 180 });
+  });
+
+  it('reads peak memory from every FFmpeg build', () => {
+    expect(parseMaxRssKiB('bench: utime=0.1s\nbench: maxrss=133620KiB\n')).toBe(133620);
+    expect(parseMaxRssKiB('bench: maxrss=50036kB')).toBe(50036);
+    expect(parseMaxRssKiB('no benchmark here')).toBeUndefined();
   });
 
   it('reads TRANSCODE_LADDER and rejects unknown renditions', () => {
