@@ -71,7 +71,7 @@ export const walletSummary = z.object({
   unsettledChargesWei: weiString,
   availableWei: weiString,
   creatorEarningsWei: weiString,
-  /** Coins bought or granted that are still being written to the blockchain (built-in wallets only). */
+  /** Coins bought or granted that are not in the balance yet (still being sent, or sent but not yet read back from the chain). */
   arrivingWei: weiString.default('0'),
 });
 export type WalletSummary = z.infer<typeof walletSummary>;

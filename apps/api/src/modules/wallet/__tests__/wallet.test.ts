@@ -162,6 +162,21 @@ describe('welcome reward', () => {
     expect((await authed(h, user).get('/api/v1/wallet/summary')).body.escrowWei).toBe(parseEther('50').toString());
   });
 
+  it('counts as arriving until the indexer has read the deposit, so the web app knows to keep refreshing', async () => {
+    const user = await registerUser(h);
+    const wallet = await newWallet(h);
+    await linkWallet(h, user, wallet);
+    const arriving = async (): Promise<string> => (await authed(h, user).get('/api/v1/wallet/summary')).body.arrivingWei;
+    const reward = await h.ctx.prisma.tokenReward.findFirstOrThrow({ where: { userId: user.id } });
+    expect(await arriving()).toBe(parseEther('50').toString()); // waiting to be sent
+    await processReward(h.ctx, reward.id);
+    expect((await h.ctx.prisma.tokenReward.findUniqueOrThrow({ where: { id: reward.id } })).status).toBe('SENT');
+    expect(await arriving()).toBe(parseEther('50').toString()); // sent, not read back yet
+    await indexUntilCaughtUp(h.ctx);
+    expect(await arriving()).toBe('0');
+    expect((await authed(h, user).get('/api/v1/wallet/summary')).body.escrowWei).toBe(parseEther('50').toString());
+  });
+
   it('is not repeated when the wallet is unlinked and linked again, or reused by another account', async () => {
     const user = await registerUser(h);
     const wallet = await newWallet(h);

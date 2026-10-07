@@ -120,7 +120,8 @@ export async function getSummary(ctx: AppContext, userId: string): Promise<Walle
   if (!user) throw new AppError(401, 'UNAUTHENTICATED', 'User no longer exists');
   const b = await getBalances(ctx.prisma, userId);
   const claimable = user.creatorProfile ? await claimableFor(ctx, userId, user.creatorProfile.id, user.walletAddress) : 0n;
-  const arriving = isManaged(ctx) ? await arrivingFor(ctx, userId) : 0n;
+  // Bonuses and coin purchases on their way (both wallet modes); the demo bank has nothing in transit.
+  const arriving = ctx.env.PAYMENTS_MODE === 'chain' ? await arrivingFor(ctx, userId) : 0n;
   return {
     walletAddress: user.walletAddress,
     escrowWei: weiToString(b.escrow),

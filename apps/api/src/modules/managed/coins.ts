@@ -59,11 +59,23 @@ export async function buyCoins(ctx: AppContext, userId: string, req: BankMoneyRe
   return { orderId: order.id, amountWei: weiToString(amount) };
 }
 
-/** Coins bought or granted to this user that are not on the blockchain yet. */
+/**
+ * Coins bought or granted to this user that are not in their balance yet: still waiting to be sent, or sent but not
+ * yet read back from the chain by the indexer. While this is above zero the web app keeps refreshing the balance.
+ */
 export async function arrivingFor(ctx: AppContext, userId: string): Promise<bigint> {
+  const since = new Date(ctx.now().getTime() - 24 * 3_600_000);
   const [orders, rewards] = await Promise.all([
-    ctx.prisma.coinOrder.aggregate({ where: { userId, status: 'PENDING' }, _sum: { amountSTRM: true } }),
-    ctx.prisma.tokenReward.aggregate({ where: { userId, status: 'PENDING', walletAddress: { not: null } }, _sum: { amountSTRM: true } }),
+    ctx.prisma.coinOrder.findMany({ where: { userId, OR: [{ status: 'PENDING' }, { status: 'SENT', createdAt: { gte: since } }] }, select: { status: true, txHash: true, amountSTRM: true } }),
+    ctx.prisma.tokenReward.findMany({
+      where: { userId, walletAddress: { not: null }, OR: [{ status: 'PENDING' }, { status: 'SENT', createdAt: { gte: since } }] },
+      select: { status: true, txHash: true, amountSTRM: true },
+    }),
   ]);
-  return (orders._sum.amountSTRM ? toWei(orders._sum.amountSTRM) : 0n) + (rewards._sum.amountSTRM ? toWei(rewards._sum.amountSTRM) : 0n);
+  const rows = [...orders, ...rewards];
+  const sentHashes = rows.filter((r) => r.status === 'SENT' && r.txHash).map((r) => r.txHash as string);
+  const indexed = sentHashes.length
+    ? new Set((await ctx.prisma.chainEvent.findMany({ where: { txHash: { in: sentHashes }, name: 'Deposited' }, select: { txHash: true } })).map((e) => e.txHash))
+    : new Set<string>();
+  return rows.reduce((sum, r) => (r.status === 'PENDING' || (r.txHash && !indexed.has(r.txHash)) ? sum + toWei(r.amountSTRM) : sum), 0n);
 }
