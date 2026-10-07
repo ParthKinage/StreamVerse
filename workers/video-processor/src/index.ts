@@ -7,7 +7,7 @@ dotenv.config({ path: path.resolve(__dirname, '..', '..', '..', '.env') });
 
 const config = loadConfig();
 const handle = startWorker(config);
-process.stdout.write(`video-processor started (concurrency ${config.TRANSCODE_CONCURRENCY}, output ${config.HLS_OUTPUT_DIR})\n`);
+process.stdout.write(`video-processor started (concurrency ${config.TRANSCODE_CONCURRENCY}, ladder ${config.TRANSCODE_LADDER}, storage ${config.STORAGE_PROVIDER === 's3' ? `s3 bucket ${config.s3?.bucket}` : config.HLS_OUTPUT_DIR})\n`);
 
 let stopping = false;
 const stop = (signal: string): void => {

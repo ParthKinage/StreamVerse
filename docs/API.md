@@ -21,9 +21,9 @@ proxy in production), which is what makes the httpOnly cookies work.
 | 401 | `UNAUTHENTICATED`, `INVALID_CREDENTIALS`, `PLAYBACK_TOKEN_INVALID` | Missing or bad token, wrong login, expired playback cookie |
 | 402 | `INSUFFICIENT_BALANCE` | Not enough available STRM to start or continue |
 | 403 | `FORBIDDEN`, `NOT_CREATOR`, `PLAYBACK_TOKEN_INVALID` | Wrong role or another user's session |
-| 404 | `NOT_FOUND`, `VIDEO_NOT_AVAILABLE` | Unknown or unpublished resource |
+| 404 | `NOT_FOUND`, `VIDEO_NOT_AVAILABLE`, `MEDIA_MISSING` | Unknown or unpublished resource; video files gone from storage |
 | 409 | `CONFLICT`, `EMAIL_TAKEN`, `USERNAME_TAKEN`, `WALLET_ALREADY_LINKED`, `WALLET_IN_USE`, `WALLET_HAS_BALANCE`, `SEQUENCE_CONFLICT`, `SESSION_NOT_ACTIVE`, `WALLET_NOT_LINKED` | State conflicts |
-| 413/415 | `UPLOAD_TOO_LARGE`, `UPLOAD_INVALID` | Upload rejected |
+| 400/413/415 | `UPLOAD_TOO_LARGE`, `UPLOAD_INVALID`, `UPLOAD_NOT_FOUND` | Upload rejected or not arrived yet |
 | 422 | `INVALID_SIGNATURE`, `NONCE_EXPIRED` | Wallet link proof failed |
 | 429 | `RATE_LIMITED`, `SEGMENT_BUDGET_EXCEEDED` | Throttled |
 | 500/503 | `INTERNAL_ERROR`, `SERVICE_UNAVAILABLE` | Server or dependency failure |
@@ -85,6 +85,8 @@ All require a bearer token; everything except `POST /creator/profile` also requi
 | Endpoint | Notes |
 |---|---|
 | `POST /creator/profile` `{channelName, bio?}` | Any user can become a creator |
+| `POST /creator/uploads` `{fileName, contentType, sizeBytes}` | Object storage only (`/config` says `uploadMode: "direct"`; otherwise `409 NOT_AVAILABLE_IN_THIS_MODE`). 201 `{uploadToken, uploadUrl, method: "PUT", headers, expiresAt}`. PUT the file to `uploadUrl` with exactly `headers`. `413 UPLOAD_TOO_LARGE` above `MAX_UPLOAD_MB`, `400 UPLOAD_INVALID` for other extensions |
+| `POST /creator/uploads/complete` `{uploadToken, title, description?, category?, tags?, priceWei?}` | 201 video (`PENDING`, transcode queued). Same video with 200 when repeated. `400 UPLOAD_NOT_FOUND` before the file has arrived, `413` if larger than announced, `400 UPLOAD_INVALID` for an expired or invalid token or a file without a video stream (the object is deleted), `403` for another user's token |
 | `POST /creator/videos` | `multipart/form-data`: `file`, `title`, `description`, `category`, `tags` (comma separated), `priceWei` (price of the whole video, 0 to 500). Magic bytes are checked, size capped by `MAX_UPLOAD_MB`. Enqueues transcoding |
 | `GET /creator/videos` | Includes `processingStatus` (`PENDING`, `PROCESSING`, `COMPLETED`, `FAILED`), `transcodeProgress`, `failureReason` |
 | `PATCH /creator/videos/:id` | Title, description, category, tags, price |
@@ -102,15 +104,16 @@ All require a bearer token; everything except `POST /creator/profile` also requi
 | `POST /watch/sessions/:id/heartbeat` `{sequence, playbackTime, state}` | `state` is `playing`, `paused` or `buffering`. Returns `{sequence, verifiedSeconds, chargedWei (always 0), availableWei, accessUntil, action}` with `action` = `continue` or `stop` (`reason: ACCESS_EXPIRED`; the cookie is not renewed) |
 | `POST /watch/sessions/:id/end` | Bearer, or `endToken` in the body (for `sendBeacon`). Counts a view when verified time is at least 30 s. Watching is not charged; the payment happened at purchase |
 | `GET /me/history`, `GET /me/continue-watching` | |
-| `GET /playback/:sessionId/*` | HLS manifests and segments, mounted at the origin root (not under `/api/v1`) so relative playlist URIs keep working. Needs the `pbt` cookie for exactly this session |
+| `GET /playback/:sessionId/*` | HLS manifests and segments, mounted at the origin root (not under `/api/v1`) so relative playlist URIs keep working. Needs the `pbt` cookie for exactly this session. With object storage only playlists are served here: each segment line is a signed bucket URL that expires `SEGMENT_URL_SLACK_SEC` after the segment's start time, and segment paths return 404. `404 MEDIA_MISSING` when the video's files are no longer in storage |
 
 Heartbeat rules (server clock only; clients never send durations or amounts):
 
 1. `sequence == last` returns the stored response (idempotent retry); anything other than `last + 1` is `409 SEQUENCE_CONFLICT`.
 2. Credited seconds = `playing ? min(now - lastHeartbeat, interval + 2 s) : 0`, floored to whole seconds.
 3. Watching is not metered for money. Verified seconds only drive view counts, resume position and the segment budget. A heartbeat after the purchase window ended returns `stop` / `ACCESS_EXPIRED`.
-4. The playback route serves media only while `servedSeconds <= 1.5 * verifiedSeconds + 120`; otherwise
-   `429 SEGMENT_BUDGET_EXCEEDED` and the player retries after the next heartbeat.
+4. Local storage: the playback route serves media only while `servedSeconds <= 1.5 * verifiedSeconds + 120`; otherwise
+   `429 SEGMENT_BUDGET_EXCEEDED` and the player retries after the next heartbeat. Object storage: see
+   `docs/DECISIONS.md` D-SEGMENT-BUDGET.
 5. A session with no heartbeat for 45 s is ended by the reaper like an explicit end.
 
 ## Admin (role `ADMIN`)

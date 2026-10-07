@@ -79,6 +79,13 @@ export async function createVideo(
   return videoToDto(video);
 }
 
+/** The video (if any) this creator already made from an uploaded original; makes direct-upload completion idempotent. */
+export async function findVideoByOriginal(ctx: AppContext, userId: string, originalFilePath: string): Promise<VideoDto | undefined> {
+  const profile = await requireCreatorProfile(ctx, userId);
+  const video = await ctx.prisma.video.findFirst({ where: { creatorId: profile.id, originalFilePath, archivedAt: null }, include: videoInclude });
+  return video ? videoToDto(video) : undefined;
+}
+
 export async function listOwnVideos(ctx: AppContext, userId: string, cursor: string | undefined, limit: number) {
   const profile = await requireCreatorProfile(ctx, userId);
   const cur = decodeCursor<{ t: string; id: string }>(cursor);
@@ -142,7 +149,7 @@ export async function retryTranscode(ctx: AppContext, userId: string, videoId: s
 export async function archiveVideo(ctx: AppContext, userId: string, videoId: string): Promise<void> {
   const video = await ownedVideo(ctx, userId, videoId);
   await ctx.prisma.video.update({ where: { id: videoId }, data: { isPublished: false, archivedAt: ctx.now() } });
-  await ctx.storage.deleteHlsDir(video.id).catch(() => undefined);
+  await ctx.storage.deleteVideoMedia(video.id).catch(() => undefined);
   await ctx.storage.deleteFile(video.originalFilePath).catch(() => undefined);
 }
 

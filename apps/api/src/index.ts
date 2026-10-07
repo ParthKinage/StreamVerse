@@ -4,7 +4,7 @@ import { createContext } from './context';
 import { startBankSettler } from './modules/bank';
 import { indexUntilCaughtUp, startIndexer } from './modules/indexer';
 import { backfillManagedWallets, ensureLedgerScope, isManaged } from './modules/managed';
-import { startTranscodeListener } from './modules/media';
+import { startMediaReconciler, startTranscodeListener } from './modules/media';
 import { getFeeBps, startSettlementWorker } from './modules/settlement';
 import { startReaper } from './modules/watch';
 
@@ -15,6 +15,7 @@ async function main(): Promise<void> {
 
   const background: Array<{ stop(): void | Promise<void> }> = [];
   background.push(startTranscodeListener(ctx));
+  background.push(startMediaReconciler(ctx));
   background.push(startReaper(ctx));
 
   // Balances and payments belong to one ledger; notice (and optionally clear them) when the app is pointed at another.

@@ -1,9 +1,26 @@
 import { Router } from 'express';
+import { isObjectKey, type S3Store } from '@tesor_gp/storage';
 import { videoListQuery, type VideoListQuery } from '@tesor_gp/shared';
 import type { AppContext } from '../../context';
 import { optionalAuth } from '../../middleware/auth';
 import { validate } from '../../middleware/validate';
 import * as service from './catalog.service';
+
+const THUMB_URL_TTL_SEC = 7 * 24 * 3600;
+const THUMB_URL_REUSE_MS = 24 * 3600 * 1000;
+
+/** Signed thumbnail URLs, reused for a day (bounded) so repeat views hit the browser cache. */
+const thumbnailUrls = {
+  items: new Map<string, { url: string; until: number }>(),
+  async get(key: string, s3: S3Store): Promise<string> {
+    const hit = this.items.get(key);
+    if (hit && hit.until > Date.now()) return hit.url;
+    const url = await s3.signedGetUrl(key, THUMB_URL_TTL_SEC);
+    if (this.items.size >= 2000) this.items.delete(this.items.keys().next().value as string);
+    this.items.set(key, { url, until: Date.now() + THUMB_URL_REUSE_MS });
+    return url;
+  },
+};
 
 export function catalogRoutes(ctx: AppContext): Router {
   const router = Router();
@@ -19,6 +36,12 @@ export function catalogRoutes(ctx: AppContext): Router {
 
   router.get('/videos/:id/thumbnail', async (req, res) => {
     const file = await service.getThumbnailPath(ctx, String(req.params.id));
+    if (ctx.storage.s3 && isObjectKey(file)) {
+      // Redirect to a signed bucket URL. The same URL is reused for a day so the browser cache keeps working.
+      res.setHeader('Cache-Control', req.query.v ? 'public, max-age=86400, immutable' : 'public, max-age=3600');
+      res.redirect(302, await thumbnailUrls.get(file, ctx.storage.s3));
+      return;
+    }
     res.setHeader('Cache-Control', 'public, max-age=3600');
     res.type('image/jpeg').sendFile(file);
   });

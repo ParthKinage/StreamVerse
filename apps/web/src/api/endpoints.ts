@@ -3,6 +3,7 @@ import type {
   ConfigResponse,
   CreatorAnalytics,
   CreatorEarnings,
+  CreateUploadResponse,
   CreatorProfileDto,
   EndSessionResponse,
   HeartbeatRequest,
@@ -21,7 +22,7 @@ import type {
   PurchaseResponse,
   UpdateVideoRequest,
 } from '@tesor_gp/shared';
-import { api, uploadWithProgress } from './client';
+import { api, putFileWithProgress, uploadWithProgress } from './client';
 
 export interface Page<T> {
   items: T[];
@@ -108,6 +109,12 @@ export const creatorApi = {
   becomeCreator: (b: { channelName: string; bio?: string }) => api<{ user: UserDto }>('/creator/profile', { method: 'POST', body: b }),
   videos: (cursor?: string) => api<Page<VideoDto>>('/creator/videos', { query: { cursor } }),
   upload: (form: FormData, onProgress: (f: number) => void, signal: AbortSignal) => uploadWithProgress<VideoDto>('/creator/videos', form, onProgress, signal),
+  /** Object storage: ask for a signed URL, PUT the file straight to storage, then tell the API it has arrived. */
+  directUpload: async (file: File, fields: Record<string, string>, onProgress: (f: number) => void, signal: AbortSignal): Promise<VideoDto> => {
+    const ticket = await api<CreateUploadResponse>('/creator/uploads', { method: 'POST', body: { fileName: file.name, contentType: file.type, sizeBytes: file.size }, signal });
+    await putFileWithProgress(ticket.uploadUrl, file, ticket.headers, onProgress, signal);
+    return api<VideoDto>('/creator/uploads/complete', { method: 'POST', body: { uploadToken: ticket.uploadToken, ...fields }, signal });
+  },
   update: (id: string, b: UpdateVideoRequest) => api<VideoDto>(`/creator/videos/${encodeURIComponent(id)}`, { method: 'PATCH', body: b }),
   publish: (id: string) => api<VideoDto>(`/creator/videos/${encodeURIComponent(id)}/publish`, { method: 'POST' }),
   unpublish: (id: string) => api<VideoDto>(`/creator/videos/${encodeURIComponent(id)}/unpublish`, { method: 'POST' }),

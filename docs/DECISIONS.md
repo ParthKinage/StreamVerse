@@ -17,7 +17,7 @@ Status values: **approved** (in `STREAMVERSE_BUILD_SPEC.md` section 3), **defaul
 | A7 | HMAC playback token (30 s) in an httpOnly cookie scoped to the session path | `apps/api/src/modules/playback` |
 | A8 | BullMQ queues `transcode` and `settlement` | `workers/video-processor`, `apps/api/src/modules/settlement` |
 | A9 | Worker and AI service have no DB access; only `apps/api` imports `@tesor_gp/database` | package dependencies |
-| A10 | `StorageProvider` interface, only `local` implemented; `s3`/`ipfs` fail at startup | `apps/api/src/modules/media` |
+| A10 | `StorageProvider` interface. `local` and `s3` (any S3-compatible service) are implemented; `ipfs` fails at startup. Amended by D-STORAGE below (TESOR_LIVE_BUILD_SPEC C2.1, owner request) | `apps/api/src/infra/storage`, `packages/storage` |
 | A11 | react-router, react-query, hls.js, ethers v6, CSS variables | `apps/web` |
 | A12 | Vitest, Supertest, Hardhat, Playwright, ESLint | all workspaces |
 
@@ -155,6 +155,29 @@ commission. This is now the default wallet mode on a chain. Linking a browser wa
 - **Not legal advice:** selling a token for real money and holding users' wallets are regulated in many countries.
   Get this checked before taking real payments.
 
+## Object storage and playback delivery (TESOR_LIVE_BUILD_SPEC Part C)
+
+**Why.** On the hosted site the API kept media on the container disk (`STORAGE_PROVIDER=local`). Render's free plan has
+no persistent disk, so files vanished on every restart while the database still listed the videos as `COMPLETED`.
+Confirmed on 2026-10-07: thumbnails of earlier uploads returned 404 "Thumbnail not found" (the code path that means the
+row exists but the file does not), and the Render log showed a new upload transcoding and playing until the next
+restart. Transcoding itself finished (360p + 720p of a 29 s clip in about 70 s), so out-of-memory was not the cause at
+that size.
+
+| # | Decision | Status |
+|---|---|---|
+| D-STORAGE | Media lives in an S3-compatible bucket (`STORAGE_PROVIDER=s3`). One package, `@tesor_gp/storage`, is the only code that talks to it (API, worker and seed use it). Keys: `originals/<userId>/<uuid>.<ext>` and `hls/<videoId>/<version>/...`; every transcode writes a new version folder, so a retry never overwrites files being played and thumbnail URLs can be cached for a long time. `local` stays for development and the existing tests. | owner request (spec C2.1) |
+| D-STORAGE-SERVICE | **Backblaze B2**, bucket `streamverse-media`, region `us-east-005`, private. Chosen by the owner after comparing (2026-10-07, from the providers' current pages): B2 free tier = 10 GB storage, egress free up to 3x the average stored data per month then $0.01/GB, class A/B/C calls free; sign-up needs no card. Cloudflare R2 (10 GB, free egress) was preferred technically but asked for a card. Supabase free (1 GB, 5 GB egress, 50 MB per file, project paused after a week idle) was too small. The code is provider-neutral; switching is a change of `S3_*` settings. | owner decision |
+| D-UPLOAD | Direct upload: `POST /creator/uploads` returns a presigned PUT URL (`UPLOAD_URL_TTL_SEC`, default 1 h) bound to the content type; the browser uploads to the bucket; `POST /creator/uploads/complete` checks size (S3 cannot cap a presigned PUT, so the API checks with HEAD), type and a real video stream (ffprobe over a short signed GET URL), then queues the transcode. The completion token is an HMAC (same secret as playback tokens, domain-separated) binding the object key, user, announced size and type; completing twice returns the first video. Multipart `POST /creator/videos` still works in both modes. | implementation choice |
+| D-PLAYBACK-URLS | Playlists still pass through the API (session cookie, purchase and session checks unchanged). The API rewrites each media playlist so every segment line is a signed bucket URL; segments never touch the API. Segment *i* is signed for `start_i + SEGMENT_URL_SLACK_SEC` (default 600 s), so a viewer who presses play can watch to the end while a copied playlist stops working soon after. Playlists are cached in API memory for 10 minutes (version folders never change). | implementation choice |
+| D-SEGMENT-BUDGET | **Trade-off, owner to confirm.** S3 signatures have an expiry but no "not before", so a signed playlist lets a client fetch every segment at once; the per-segment budget (`1.5 x verified + 120 s`) can no longer be enforced byte by byte in `s3` mode. For video on demand this costs nothing: the viewer has already paid for 48 h of access to the whole video. The budget is enforced at the token/playlist step instead (active session, valid purchase, short-lived URLs). `local` mode keeps the per-segment budget. For live streaming (Part E) the playlist is naturally a sliding window, which is where the budget matters for per-minute billing. | implementation choice, awaiting confirmation |
+| D-THUMBS | Thumbnails: `GET /videos/:id/thumbnail?v=<version>` redirects (302) to a signed bucket URL valid 7 days and reused for a day; the redirect is cacheable for a day when the URL carries the version. | implementation choice |
+| D-LADDER | `TRANSCODE_LADDER` (any of 360p, 480p, 720p, 1080p; 1080p only for sources of at least 1080 lines) and `TRANSCODE_THREADS`. Defaults: `360p,720p,1080p` and FFmpeg's own thread count in development; the Docker image sets `480p` and 2 threads for the small Render instance. Each job logs wall time and peak FFmpeg memory (from `-benchmark`). Measured locally: a 20 s 720p H.264 clip to 480p took 2.2 s with 145 MiB peak FFmpeg memory. | implementation choice |
+| D-WORKER-SERVICE | The worker stays in the API container for now. With the original out of the container (downloaded to a temp folder per job and deleted after) and one 480p rendition, a 512 MB instance has room for it. Move it to its own service when uploads get longer than a few minutes or when the API host changes (Part D1). | implementation choice, revisit with Part D |
+| D-RECONCILE | `MEDIA_RECONCILE_EVERY_MIN` (default 60; first run 30 s after start): every `COMPLETED` video whose master playlist is missing becomes `FAILED` with "The video files are no longer in storage. Upload the video again." and is unpublished. A storage error never counts as missing. Rows that still hold local paths after the switch to `s3` count as missing, which is how the videos lost on Render get cleaned up. | implementation choice |
+| D-PLAYER-ERRORS | The player names the problem (not found, not authorised, still processing, network, decoding) and offers Retry. Transient network errors (no answer, 429, 5xx) are retried with back-off; 4xx are not retried by hls.js. A 401/403 on a segment (signed URLs ran out after a long pause) reloads the playlist and continues at the same position. Cookies are only sent to our own origin, never to the bucket. | implementation choice |
+| D-LOCAL-S3 | Tests and local development use `versity/versitygw:v1.8.0` (docker-compose service `s3`, port 7070, development-only keys) because the MinIO image is no longer published on Docker Hub. It checks SigV4 signatures and supports bucket CORS, so signing bugs fail in tests. | implementation choice |
+
 ## Limitations and unverified items (UNKNOWN)
 
 | Item | Why it could not be completed in the build environment |
@@ -163,4 +186,6 @@ commission. This is now the default wallet mode on a chain. Linking a browser wa
 | Manual run of `docs/DEMO.md` on Amoy | Depends on the item above and a real browser wallet. |
 | Playwright with real H.264 playback | The Chromium shipped with Playwright has no H.264 decoder and Chrome could not be downloaded. The suite therefore supports `E2E_FAKE_MEDIA=1`, which replaces the media element with a clock and still fetches the manifests and segments with the playback cookie, so billing, the segment budget and settlement are exercised for real. CI runs the suite with the Chrome channel (real decoding). |
 | `prisma migrate dev` drift check | Needs the Prisma schema engine (see above). |
-| Creator approval, email flows, S3/IPFS, DRM, live streaming | Out of scope (spec section 16). |
+| Creator approval, email flows, IPFS, DRM, live streaming | Out of scope (spec section 16). |
+| Object storage on the hosted site | Verified locally (versitygw) and by tests. Not yet run against Backblaze B2 or on Render: needs the owner's B2 application key in Render's environment. B2's documentation does not state a maximum presigned URL lifetime; we only use minutes to days, below the SigV4 maximum of 7 days. |
+| Browser scenario for upload to playback against storage (spec C3) | Checked by hand in a real browser against the local stack (upload, transcode, publish, play, restart, play again, missing files). The Playwright suite needs a `redis-server` binary, which is not installed on the owner's Windows machine, so the suite was not run. |

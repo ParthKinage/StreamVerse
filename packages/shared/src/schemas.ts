@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import {
+  ALLOWED_UPLOAD_MIME,
   CATEGORIES,
   MAX_TAGS,
   MAX_TAG_LENGTH,
@@ -124,6 +125,8 @@ export const configResponse = z.object({
   /** How long a purchase keeps a video unlocked. */
   accessHours: z.number(),
   maxUploadMb: z.number(),
+  /** 'direct' = the browser uploads straight to object storage (POST /creator/uploads); 'multipart' = POST /creator/videos. */
+  uploadMode: z.enum(['multipart', 'direct']).default('multipart'),
   categories: z.array(z.string()),
 });
 export type ConfigResponse = z.infer<typeof configResponse>;
@@ -219,6 +222,25 @@ export const updateVideoRequest = z
   .partial();
 export type UpdateVideoRequest = z.infer<typeof updateVideoRequest>;
 
+/** Step 1 of a direct upload: ask for a signed URL to PUT the file to. */
+export const createUploadRequest = z.object({
+  fileName: z.string().trim().min(1).max(255),
+  contentType: z.enum(ALLOWED_UPLOAD_MIME),
+  sizeBytes: z.number().int().positive(),
+});
+export type CreateUploadRequest = z.infer<typeof createUploadRequest>;
+
+export const createUploadResponse = z.object({
+  /** Opaque, signed; hand it back to POST /creator/uploads/complete. */
+  uploadToken: z.string(),
+  uploadUrl: z.string().url(),
+  method: z.literal('PUT'),
+  /** Send exactly these headers with the PUT (the content type is part of the signature). */
+  headers: z.record(z.string(), z.string()),
+  expiresAt: z.string(),
+});
+export type CreateUploadResponse = z.infer<typeof createUploadResponse>;
+
 export const uploadVideoFields = z.object({
   title: z.string().trim().min(1).max(MAX_VIDEO_TITLE),
   description: z.string().trim().max(MAX_VIDEO_DESCRIPTION).default(''),
@@ -230,6 +252,10 @@ export const uploadVideoFields = z.object({
     .pipe(tagsSchema),
   priceWei: weiString.optional(),
 });
+
+/** Step 2 of a direct upload: the file is in storage; create the video from it. */
+export const completeUploadRequest = uploadVideoFields.extend({ uploadToken: z.string().min(16).max(4000) });
+export type CompleteUploadRequest = z.infer<typeof completeUploadRequest>;
 
 export const creatorAnalytics = z.object({
   totalViews: z.number(),

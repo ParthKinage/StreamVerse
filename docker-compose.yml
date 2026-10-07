@@ -18,5 +18,15 @@ services:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       retries: 10
+  # Local S3-compatible object storage for development and tests (STORAGE_PROVIDER=s3). Development-only keys.
+  s3:
+    image: versity/versitygw:v1.8.0
+    command: ["--port", ":7070", "posix", "/data"]
+    environment:
+      ROOT_ACCESS_KEY_ID: devaccesskey
+      ROOT_SECRET_ACCESS_KEY: devsecretkey
+    ports: ["7070:7070"]
+    volumes: ["s3data:/data"]
 volumes:
   pgdata:
+  s3data:

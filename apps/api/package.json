@@ -15,6 +15,7 @@
     "@tesor_gp/blockchain": "*",
     "@tesor_gp/database": "*",
     "@tesor_gp/shared": "*",
+    "@tesor_gp/storage": "*",
     "bcryptjs": "^3.0.3",
     "bullmq": "^6.3.11",
     "cookie-parser": "^1.4.7",

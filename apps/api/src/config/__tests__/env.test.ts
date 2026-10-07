@@ -63,6 +63,12 @@ describe('parseEnv', () => {
   });
 
   it('fails on unimplemented storage providers', () => {
-    expect(() => parseEnv({ ...base, STORAGE_PROVIDER: 's3' } as NodeJS.ProcessEnv)).toThrow(/not implemented/);
+    expect(() => parseEnv({ ...base, STORAGE_PROVIDER: 'ipfs' } as NodeJS.ProcessEnv)).toThrow(/not implemented/);
+  });
+
+  it('needs every S3 setting when object storage is selected', () => {
+    expect(() => parseEnv({ ...base, STORAGE_PROVIDER: 's3', S3_ENDPOINT: 'https://s3.example' } as NodeJS.ProcessEnv)).toThrow(/S3_BUCKET/);
+    const s3 = { S3_ENDPOINT: 'https://s3.example', S3_REGION: 'r', S3_BUCKET: 'b', S3_ACCESS_KEY_ID: 'k', S3_SECRET_ACCESS_KEY: 's' };
+    expect(parseEnv({ ...base, STORAGE_PROVIDER: 's3', ...s3 } as NodeJS.ProcessEnv).S3_BUCKET).toBe('b');
   });
 });

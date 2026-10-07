@@ -78,6 +78,8 @@ export const ERROR_CODES = [
   'PURCHASE_REQUIRED',
   'ACCESS_EXPIRED',
   'DAILY_LIMIT_REACHED',
+  'MEDIA_MISSING',
+  'UPLOAD_NOT_FOUND',
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];
 

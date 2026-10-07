@@ -7,10 +7,12 @@
  */
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import bcrypt from 'bcryptjs';
 import dotenv from 'dotenv';
 import { HDNodeWallet, Mnemonic } from 'ethers';
+import { S3Store, hlsPrefix, s3SettingsFromEnv } from '@tesor_gp/storage';
 import { disconnectPrisma, getPrisma } from './index';
 
 function findEnv(): void {
@@ -91,6 +93,20 @@ function generateMedia(bin: string, uploadDir: string, hlsDir: string, v: (typeo
   return { source, manifest, thumb };
 }
 
+/**
+ * Object storage (STORAGE_PROVIDER=s3): the demo media lives in the bucket under fixed keys, so it survives restarts and
+ * is generated and uploaded only once. Local generation still happens in a temp folder first.
+ */
+async function seedMediaToBucket(store: S3Store, bin: string, workDir: string, v: (typeof VIDEOS)[number]): Promise<{ source: string; manifest: string; thumb: string }> {
+  const prefix = hlsPrefix(v.id, 'seed');
+  const keys = { source: `originals/seed/${v.id}.mp4`, manifest: `${prefix}master.m3u8`, thumb: `${prefix}thumbnail.jpg` };
+  if ((await store.exists(keys.manifest)) && (await store.exists(keys.thumb))) return keys;
+  const local = generateMedia(bin, path.join(workDir, 'uploads'), path.join(workDir, 'hls'), v);
+  await store.putFile(keys.source, local.source);
+  await store.putDirectory(prefix, path.dirname(local.manifest));
+  return keys;
+}
+
 /** Relative media folders resolve against the repo root (the folder whose package.json has "workspaces"), so the API, worker and seed all agree no matter which workspace they run from. */
 function resolveFromRepoRoot(p: string): string {
   if (path.isAbsolute(p)) return p;
@@ -116,6 +132,8 @@ async function main(): Promise<void> {
   const uploadDir = resolveFromRepoRoot(process.env.UPLOAD_DIR || './uploads');
   const hlsDir = resolveFromRepoRoot(process.env.HLS_OUTPUT_DIR || './hls-output');
   const local = (process.env.CHAIN_ID ?? '80002') === '31337';
+  const store = process.env.STORAGE_PROVIDER === 's3' ? new S3Store(s3SettingsFromEnv()) : undefined;
+  const workDir = store ? fs.mkdtempSync(path.join(os.tmpdir(), 'sv-seed-')) : '';
   const passwordHash = await bcrypt.hash(SEED_PASSWORD, 10);
 
   for (const u of USERS) {
@@ -134,7 +152,7 @@ async function main(): Promise<void> {
     });
   }
   for (const v of VIDEOS) {
-    const media = generateMedia(ffmpegBin, uploadDir, hlsDir, v);
+    const media = store ? await seedMediaToBucket(store, ffmpegBin, workDir, v) : generateMedia(ffmpegBin, uploadDir, hlsDir, v);
     const data = {
       title: v.title,
       description: `${v.title}. Generated test media for the StreamVerse demo.`,
@@ -152,6 +170,7 @@ async function main(): Promise<void> {
     };
     await prisma.video.upsert({ where: { id: v.id }, update: data, create: { id: v.id, ...data } });
   }
+  if (workDir) fs.rmSync(workDir, { recursive: true, force: true });
   process.stdout.write(`Seeded ${USERS.length} users, ${CREATORS.length} creators, ${VIDEOS.length} videos. Password for all: ${SEED_PASSWORD}\n`);
 }
 

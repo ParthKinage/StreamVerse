@@ -171,6 +171,27 @@ export function uploadWithProgress<T>(path: string, form: FormData, onProgress: 
   })();
 }
 
+/**
+ * PUTs a file straight to object storage through a presigned URL (no cookies, no Authorization header: the URL is the
+ * permission). XHR, because fetch cannot report upload progress.
+ */
+export function putFileWithProgress(url: string, file: Blob, headers: Record<string, string>, onProgress: (fraction: number) => void, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', url);
+    for (const [k, v] of Object.entries(headers)) xhr.setRequestHeader(k, v);
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) onProgress(e.loaded / e.total);
+    };
+    xhr.onload = () =>
+      xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new ApiError(xhr.status, 'UPLOAD_FAILED', 'The video storage refused the upload. Try again.'));
+    xhr.onerror = () => reject(new ApiError(0, 'NETWORK_ERROR', 'Upload failed: cannot reach the video storage'));
+    xhr.onabort = () => reject(new DOMException('Upload cancelled', 'AbortError'));
+    signal.addEventListener('abort', () => xhr.abort(), { once: true });
+    xhr.send(file);
+  });
+}
+
 /** Plain-language message for any thrown value. */
 export function errorMessage(err: unknown): string {
   if (err instanceof ApiError) return err.message;

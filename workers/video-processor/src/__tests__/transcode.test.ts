@@ -7,7 +7,10 @@ import { Redis } from 'ioredis';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { loadConfig } from '../config';
 import { probe } from '../ffmpeg';
-import { buildLadder, buildMasterPlaylist, renditionSize, transcode } from '../transcode';
+import { S3Store } from '@tesor_gp/storage';
+import { MediaError } from '../ffmpeg';
+import { transcodeFromStore } from '../storage';
+import { buildLadder, buildMasterPlaylist, parseLadder, renditionSize, transcode } from '../transcode';
 import { startWorker } from '../worker';
 
 const FFMPEG = process.env.FFMPEG_PATH ?? 'ffmpeg';
@@ -41,6 +44,16 @@ describe('ladder', () => {
     const src = { durationSeconds: 10, width: 1280, height: 720, hasAudio: true };
     expect(renditionSize(src, buildLadder(720)[0]!)).toEqual({ width: 640, height: 360 });
     expect(renditionSize({ ...src, width: 320, height: 180 }, buildLadder(180)[1]!)).toEqual({ width: 320, height: 180 });
+  });
+
+  it('reads TRANSCODE_LADDER and rejects unknown renditions', () => {
+    expect(parseLadder('480p').map((r) => r.name)).toEqual(['480p']);
+    expect(parseLadder(' 720P, 360p ,360p').map((r) => r.name)).toEqual(['360p', '720p']);
+    expect(() => parseLadder('4k')).toThrow(/unknown: 4k/);
+    expect(() => parseLadder('')).toThrow(/TRANSCODE_LADDER/);
+    expect(buildLadder(360, parseLadder('480p,1080p')).map((r) => r.name)).toEqual(['480p']);
+    expect(() => loadConfig({ TRANSCODE_LADDER: '2160p' })).toThrow(/Invalid worker configuration/);
+    expect(() => loadConfig({ STORAGE_PROVIDER: 's3' })).toThrow(/S3_ENDPOINT/);
   });
 
   it('writes a master playlist that lists every rendition', () => {
@@ -86,6 +99,15 @@ describe('transcode', () => {
     expect(fs.readdirSync(path.dirname(out)).filter((n) => n.includes('.partial-'))).toEqual([]);
   });
 
+  it('produces only the configured rendition, with explicit threads, and reports time and memory', async () => {
+    const out = path.join(tmp, 'ladder', 'v480');
+    const result = await transcode({ videoId: 'v480', inputPath: silent, outputDir: out }, { ...deps, ladder: parseLadder('480p'), threads: 1 });
+    expect(result.renditions).toEqual(['480p']);
+    expect(fs.readFileSync(result.manifestPath, 'utf8')).not.toContain('720p');
+    expect(result.stats?.seconds).toBeGreaterThan(0);
+    expect(result.stats?.peakRssMiB).toBeGreaterThan(0);
+  });
+
   it('handles a source without an audio track and does not upscale a 360p source', async () => {
     const out = path.join(tmp, 'out', 'v2');
     const result = await transcode({ videoId: 'v2', inputPath: silent, outputDir: out }, deps);
@@ -125,6 +147,43 @@ describe('transcode', () => {
   });
 });
 
+describe('object storage', () => {
+  const store = new S3Store({
+    endpoint: process.env.S3_TEST_ENDPOINT ?? 'http://localhost:7070',
+    region: 'us-east-1',
+    bucket: `worker-test-${process.pid}`,
+    accessKeyId: 'devaccesskey',
+    secretAccessKey: 'devsecretkey',
+    forcePathStyle: true,
+  });
+  beforeAll(() => store.ensureBucket());
+  afterAll(() => store.deletePrefix('').catch(() => undefined));
+
+  it('downloads the original, uploads a versioned HLS folder and returns object keys', async () => {
+    await store.putFile('originals/u1/clip.mp4', silent);
+    const result = await transcodeFromStore(store, { videoId: 's3v', inputPath: 'originals/u1/clip.mp4', outputDir: 'hls/s3v/', storage: 's3' }, { ...deps, ladder: parseLadder('360p') });
+    expect(result.manifestPath).toMatch(/^hls\/s3v\/[a-z0-9]+\/master\.m3u8$/);
+    const prefix = result.manifestPath.replace('master.m3u8', '');
+    expect(result.thumbnailPath).toBe(`${prefix}thumbnail.jpg`);
+    expect(await store.getText(result.manifestPath)).toContain('360p/index.m3u8');
+    expect(await store.getText(`${prefix}360p/index.m3u8`)).toContain('#EXT-X-ENDLIST');
+    expect((await store.head(`${prefix}360p/seg_000.ts`))?.contentType).toBe('video/mp2t');
+    expect((await store.head(result.thumbnailPath))?.size).toBeGreaterThan(500);
+
+    // a retry writes a new version folder instead of overwriting files a viewer may be playing
+    const again = await transcodeFromStore(store, { videoId: 's3v', inputPath: 'originals/u1/clip.mp4', outputDir: 'hls/s3v/', storage: 's3' }, { ...deps, ladder: parseLadder('360p') });
+    expect(again.manifestPath).not.toBe(result.manifestPath);
+    expect(await store.exists(result.manifestPath)).toBe(true);
+  });
+
+  it('fails permanently when the original is not in the bucket', async () => {
+    const err = await transcodeFromStore(store, { videoId: 'gone', inputPath: 'originals/u1/missing.mp4', outputDir: 'hls/gone/', storage: 's3' }, deps).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(MediaError);
+    expect((err as MediaError).permanent).toBe(true);
+    expect(await store.exists('hls/gone/')).toBe(false);
+  });
+});
+
 describe('queue worker', () => {
   const redisUrl = process.env.TEST_REDIS_URL ?? 'redis://localhost:6379/14';
 
@@ -152,6 +211,10 @@ describe('queue worker', () => {
       await expect(failing.waitUntilFinished(events, 30_000)).rejects.toThrow(/corrupt|not a supported|no video/i);
       expect((await queue.getJob('transcode-q2'))?.attemptsMade).toBe(1);
       expect(fs.existsSync(path.join(tmp, 'hls', 'q2'))).toBe(false);
+
+      // a job meant for object storage is refused (not silently written to local disk) when the worker has no bucket
+      const s3Job = await queue.add('transcode', { videoId: 'q3', inputPath: 'originals/x.mp4', outputDir: 'hls/q3/', storage: 's3' }, { jobId: 'transcode-q3' });
+      await expect(s3Job.waitUntilFinished(events, 30_000)).rejects.toThrow(/STORAGE_PROVIDER=s3/);
     } finally {
       await handle.close();
       await events.close();

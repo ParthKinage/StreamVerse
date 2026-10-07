@@ -2,8 +2,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Router, type Response } from 'express';
 import { HEARTBEAT_INTERVAL_SEC, SEGMENT_BUDGET_FACTOR, SEGMENT_BUDGET_SLACK_SEC } from '@tesor_gp/shared';
+import { isObjectKey, type S3Store } from '@tesor_gp/storage';
 import type { AppContext } from '../../context';
 import { AppError, forbidden, notFound, unauthenticated } from '../../middleware/errors';
+import { PlaylistCache, resolveMediaKey, signMediaPlaylist } from './playlist';
 import { PLAYBACK_COOKIE, signPlaybackToken, verifyPlaybackToken } from './token';
 
 const SEGMENT_EXT = new Set(['.ts', '.m4s', '.aac', '.mp4']);
@@ -40,8 +42,27 @@ async function recordDurations(ctx: AppContext, videoId: string, relPlaylist: st
   if (Object.keys(fields).length) await ctx.redis.hset(durKey(videoId), fields);
 }
 
+export const mediaMissing = (): AppError => new AppError(404, 'MEDIA_MISSING', 'The video files are no longer in storage. The creator needs to upload the video again.');
+
+/**
+ * Object storage: only playlists pass through the API. Each segment line is rewritten to a signed bucket URL, so the
+ * browser downloads video bytes straight from storage (docs/DECISIONS.md D-PLAYBACK-URLS).
+ */
+async function sendObjectPlaylist(ctx: AppContext, s3: S3Store, cache: PlaylistCache, res: Response, manifestKey: string | null, rel: string): Promise<void> {
+  if (!manifestKey || !isObjectKey(manifestKey)) throw mediaMissing();
+  if (path.posix.extname(rel).toLowerCase() !== '.m3u8') throw notFound();
+  const key = resolveMediaKey(manifestKey, rel);
+  if (!key) throw notFound();
+  const text = await cache.get(key, (k) => s3.getText(k));
+  if (text === undefined) throw key === manifestKey ? mediaMissing() : notFound();
+  const body = key === manifestKey ? text : await signMediaPlaylist(text, key, manifestKey, (k, ttl) => s3.signedGetUrl(k, ttl), ctx.env.SEGMENT_URL_SLACK_SEC);
+  res.setHeader('Cache-Control', 'no-store');
+  res.type('application/vnd.apple.mpegurl').send(body);
+}
+
 export function playbackRoutes(ctx: AppContext): Router {
   const router = Router();
+  const playlists = new PlaylistCache();
 
   router.get('/playback/:sessionId/*splat', async (req, res) => {
     const sessionId = String(req.params.sessionId);
@@ -58,13 +79,15 @@ export function playbackRoutes(ctx: AppContext): Router {
 
     const session = await ctx.prisma.watchSession.findUnique({
       where: { id: sessionId },
-      select: { userId: true, videoId: true, status: true, verifiedDurationSeconds: true },
+      select: { userId: true, videoId: true, status: true, verifiedDurationSeconds: true, video: { select: { hlsManifestPath: true } } },
     });
     if (!session || session.userId !== verdict.claims.uid) throw forbidden('Session not found for this token', 'PLAYBACK_TOKEN_INVALID');
     if (session.status !== 'ACTIVE') throw forbidden('Session is not active', 'SESSION_NOT_ACTIVE');
 
     const parts = (req.params.splat as unknown as string[]) ?? [];
     const rel = parts.join('/');
+    if (ctx.storage.s3) return sendObjectPlaylist(ctx, ctx.storage.s3, playlists, res, session.video.hlsManifestPath, rel);
+
     const ext = path.extname(rel).toLowerCase();
     if (!ALLOWED_EXT.has(ext)) throw notFound();
     const file = ctx.storage.resolveHlsPath(session.videoId, rel);

@@ -31,6 +31,7 @@ const config: ConfigResponse = {
   maxPriceWei: '500000000000000000000',
   accessHours: 48,
   maxUploadMb: 1024,
+  uploadMode: 'multipart',
   categories: ['General'],
 };
 const user: UserDto = { id: 'u1', email: 'a@b.co', username: 'alice', role: 'USER', walletAddress: '0x' + 'a'.repeat(40), channelName: null, createdAt: new Date().toISOString() };

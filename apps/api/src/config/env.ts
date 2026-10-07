@@ -94,6 +94,22 @@ const schema = z
     BATCH_WINDOW_MS: z.coerce.number().int().min(0).max(60_000).default(2000),
     WELCOME_BONUS_STRM: num(50),
     STORAGE_PROVIDER: z.enum(['local', 's3', 'ipfs']).default('local'),
+    /** Object storage (STORAGE_PROVIDER=s3): any S3-compatible service. Required together when s3 is selected. */
+    S3_ENDPOINT: z.string().url().optional(),
+    S3_REGION: z.string().min(1).optional(),
+    S3_BUCKET: z.string().min(1).optional(),
+    S3_ACCESS_KEY_ID: z.string().min(1).optional(),
+    S3_SECRET_ACCESS_KEY: z.string().min(1).optional(),
+    S3_FORCE_PATH_STYLE: truthy.default(false),
+    /** How long a presigned upload URL stays valid. */
+    UPLOAD_URL_TTL_SEC: z.coerce.number().int().min(60).max(24 * 3600).default(3600),
+    /**
+     * Each signed segment URL expires this many seconds after the moment the segment should play at normal speed,
+     * so a playlist issued now covers the whole video but a URL cannot be reused long after.
+     */
+    SEGMENT_URL_SLACK_SEC: z.coerce.number().int().min(30).max(24 * 3600).default(600),
+    /** How often the API checks that every playable video still has its files (0 disables the check). */
+    MEDIA_RECONCILE_EVERY_MIN: z.coerce.number().int().min(0).default(60),
     UPLOAD_DIR: z.string().default('./uploads'),
     HLS_OUTPUT_DIR: z.string().default('./hls-output'),
     FFMPEG_PATH: z.string().default('ffmpeg'),
@@ -111,12 +127,13 @@ const schema = z
     LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   })
   .superRefine((env, ctx) => {
-    if (env.STORAGE_PROVIDER !== 'local') {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['STORAGE_PROVIDER'],
-        message: `storage provider "${env.STORAGE_PROVIDER}" is not implemented; use "local"`,
-      });
+    if (env.STORAGE_PROVIDER === 'ipfs') {
+      ctx.addIssue({ code: 'custom', path: ['STORAGE_PROVIDER'], message: 'storage provider "ipfs" is not implemented; use "local" or "s3"' });
+    }
+    if (env.STORAGE_PROVIDER === 's3') {
+      for (const key of ['S3_ENDPOINT', 'S3_REGION', 'S3_BUCKET', 'S3_ACCESS_KEY_ID', 'S3_SECRET_ACCESS_KEY'] as const) {
+        if (!env[key]) ctx.addIssue({ code: 'custom', path: [key], message: 'required when STORAGE_PROVIDER=s3' });
+      }
     }
     if (env.NODE_ENV === 'production' && env.PAYMENTS_MODE === 'chain') {
       const key = env.SETTLEMENT_RELAYER_PRIVATE_KEY;

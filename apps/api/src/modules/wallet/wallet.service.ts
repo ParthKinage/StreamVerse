@@ -162,6 +162,7 @@ export function getConfig(ctx: AppContext): ConfigResponse {
     maxPriceWei: (BigInt(MAX_VIDEO_PRICE_STRM) * 10n ** 18n).toString(),
     accessHours: ctx.env.ACCESS_HOURS,
     maxUploadMb: ctx.env.MAX_UPLOAD_MB,
+    uploadMode: ctx.storage.kind === 's3' ? 'direct' : 'multipart',
     categories: [...CATEGORIES],
   };
 }
