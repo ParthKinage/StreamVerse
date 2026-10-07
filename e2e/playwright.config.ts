@@ -20,7 +20,8 @@ export default defineConfig({
   retries: 0,
   timeout: 240_000,
   expect: { timeout: 15_000 },
-  reporter: [['list']],
+  // On CI also report each failure as a GitHub annotation, so the reason is visible on the pull request.
+  reporter: process.env.CI ? [['list'], ['github']] : [['list']],
   use: {
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
