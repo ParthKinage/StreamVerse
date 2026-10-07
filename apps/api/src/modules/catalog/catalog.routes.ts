@@ -3,6 +3,7 @@ import { isObjectKey, type S3Store } from '@tesor_gp/storage';
 import { videoListQuery, type VideoListQuery } from '@tesor_gp/shared';
 import type { AppContext } from '../../context';
 import { optionalAuth } from '../../middleware/auth';
+import { publicWhenAnonymous } from '../../middleware/http-cache';
 import { validate } from '../../middleware/validate';
 import * as service from './catalog.service';
 
@@ -26,7 +27,8 @@ export function catalogRoutes(ctx: AppContext): Router {
   const router = Router();
   const optional = optionalAuth(ctx);
 
-  router.get('/videos', optional, validate('query', videoListQuery), async (req, res) => {
+  // Anonymous lists are the same for everyone, so Vercel's edge may serve them for a short while.
+  router.get('/videos', publicWhenAnonymous(30), optional, validate('query', videoListQuery), async (req, res) => {
     res.json(await service.listVideos(ctx, req.query as unknown as VideoListQuery, req.user?.id));
   });
 
@@ -46,11 +48,11 @@ export function catalogRoutes(ctx: AppContext): Router {
     res.type('image/jpeg').sendFile(file);
   });
 
-  router.get('/categories', async (_req, res) => {
+  router.get('/categories', publicWhenAnonymous(60), async (_req, res) => {
     res.json({ categories: await service.listCategories(ctx) });
   });
 
-  router.get('/creators/:id', async (req, res) => {
+  router.get('/creators/:id', publicWhenAnonymous(60), async (req, res) => {
     res.json(await service.getCreatorProfile(ctx, String(req.params.id)));
   });
 

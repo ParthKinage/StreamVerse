@@ -1,6 +1,7 @@
 import { CATEGORIES, type CreatorProfileDto, type VideoDto, type VideoListQuery, type VideoListResponse } from '@tesor_gp/shared';
 import type { Prisma } from '@tesor_gp/database';
 import type { AppContext } from '../../context';
+import { Memo } from '../../middleware/http-cache';
 import { notFound } from '../../middleware/errors';
 import { decodeCursor, encodeCursor, videoInclude, videoToDto, type VideoWithCreator } from '../common';
 
@@ -117,11 +118,18 @@ export async function getThumbnailPath(ctx: AppContext, id: string): Promise<str
   return video.thumbnailPath;
 }
 
+const categoriesMemo = new WeakMap<AppContext, Memo<Array<{ name: string; count: number }>>>();
+
+/** Categories with video counts; computed at most every 30 s per API instance. */
 export async function listCategories(ctx: AppContext): Promise<Array<{ name: string; count: number }>> {
-  const rows = await ctx.prisma.video.groupBy({ by: ['category'], where: publicVideoWhere, _count: { _all: true } });
-  const counts = new Map(rows.map((r) => [r.category, r._count._all]));
-  const names = Array.from(new Set<string>([...CATEGORIES, ...counts.keys()]));
-  return names.map((name) => ({ name, count: counts.get(name) ?? 0 }));
+  let memo = categoriesMemo.get(ctx);
+  if (!memo) categoriesMemo.set(ctx, (memo = new Memo(30_000)));
+  return memo.get(async () => {
+    const rows = await ctx.prisma.video.groupBy({ by: ['category'], where: publicVideoWhere, _count: { _all: true } });
+    const counts = new Map(rows.map((r) => [r.category, r._count._all]));
+    const names = Array.from(new Set<string>([...CATEGORIES, ...counts.keys()]));
+    return names.map((name) => ({ name, count: counts.get(name) ?? 0 }));
+  });
 }
 
 export async function getCreatorProfile(ctx: AppContext, id: string): Promise<CreatorProfileDto> {

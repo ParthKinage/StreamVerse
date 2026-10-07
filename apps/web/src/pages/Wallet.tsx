@@ -100,11 +100,12 @@ function ChainWalletPage(): JSX.Element {
 
   const txs = useInfiniteQuery({
     queryKey: keys.transactions,
-    refetchInterval: 10_000,
     queryFn: ({ pageParam }) => walletApi.transactions(pageParam),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (l) => l.nextCursor ?? undefined,
     enabled: Boolean(user?.walletAddress),
+    // Poll only while a transaction is still pending.
+    refetchInterval: (q) => (q.state.data?.pages.some((pg) => pg.items.some((t) => t.status === 'PENDING')) ? 5_000 : false),
   });
 
   return (

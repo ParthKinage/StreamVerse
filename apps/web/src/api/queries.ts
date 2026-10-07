@@ -19,7 +19,11 @@ export function useConfig() {
   return useQuery({ queryKey: keys.config, queryFn: configApi.get, staleTime: 5 * 60_000 });
 }
 
-/** Wallet balances come from the API summary; they refresh on focus and every 10 s so indexed chain events (bonuses, settlements) appear without a reload. */
+/**
+ * Wallet balances come from the API summary. They refresh when the tab regains focus and after every action (the
+ * actions invalidate this query), and are only polled while something is on its way: coins being credited or
+ * charges waiting to settle. An idle signed-in tab sends no wallet requests.
+ */
 export function useWalletSummary(options: Partial<UseQueryOptions<Awaited<ReturnType<typeof walletApi.summary>>>> = {}) {
   const { user } = useAuth();
   return useQuery({
@@ -27,7 +31,7 @@ export function useWalletSummary(options: Partial<UseQueryOptions<Awaited<Return
     queryFn: walletApi.summary,
     enabled: Boolean(user),
     refetchOnWindowFocus: true,
-    refetchInterval: 10_000,
+    refetchInterval: (q) => (summaryHasPending(q.state.data) ? 5_000 : false),
     staleTime: 5_000,
     ...options,
   });
@@ -43,7 +47,8 @@ export function useContinueWatching() {
 }
 
 export function useCreatorEarnings(enabled: boolean) {
-  return useQuery({ queryKey: keys.creatorEarnings, queryFn: creatorApi.earnings, enabled, refetchOnWindowFocus: true, refetchInterval: 10_000 });
+  // Poll only while a payout is on its way.
+  return useQuery({ queryKey: keys.creatorEarnings, queryFn: creatorApi.earnings, enabled, refetchOnWindowFocus: true, refetchInterval: (q) => (q.state.data?.payoutPending ? 5_000 : false) });
 }
 
 /** True when payments run on the blockchain and every account has a built-in wallet (no browser wallet, no gas). */
@@ -56,4 +61,10 @@ export function useManagedMode(): boolean {
 export function useBankMode(): boolean {
   const { data } = useConfig();
   return data?.paymentsMode === 'bank';
+}
+
+/** True while coins are being credited or charges are waiting to settle, so the balance is about to change. */
+export function summaryHasPending(s: { arrivingWei?: string; unsettledChargesWei?: string } | undefined): boolean {
+  if (!s) return false;
+  return BigInt(s.arrivingWei ?? '0') > 0n || BigInt(s.unsettledChargesWei ?? '0') > 0n;
 }
