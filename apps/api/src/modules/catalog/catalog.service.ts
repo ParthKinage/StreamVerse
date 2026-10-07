@@ -1,4 +1,3 @@
-import fs from 'node:fs';
 import { CATEGORIES, type CreatorProfileDto, type VideoDto, type VideoListQuery, type VideoListResponse } from '@tesor_gp/shared';
 import type { Prisma } from '@tesor_gp/database';
 import type { AppContext } from '../../context';
@@ -115,7 +114,7 @@ export async function getVideo(ctx: AppContext, id: string, viewer?: { id: strin
 
 export async function getThumbnailPath(ctx: AppContext, id: string): Promise<string> {
   const video = await ctx.prisma.video.findUnique({ where: { id }, select: { thumbnailPath: true, archivedAt: true } });
-  if (!video?.thumbnailPath || video.archivedAt || !fs.existsSync(video.thumbnailPath)) throw notFound('Thumbnail not found');
+  if (!video?.thumbnailPath || video.archivedAt || !(await ctx.storage.exists(video.thumbnailPath))) throw notFound('Thumbnail not found');
   return video.thumbnailPath;
 }
 

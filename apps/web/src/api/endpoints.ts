@@ -3,6 +3,7 @@ import type {
   ConfigResponse,
   CreatorAnalytics,
   CreatorEarnings,
+  CreateUploadResponse,
   CreatorProfileDto,
   EndSessionResponse,
   HeartbeatRequest,
@@ -16,11 +17,12 @@ import type {
   WalletSummary,
   WalletTransaction,
   AdminSettlementDto,
+  AdminRevenue,
   ReceivedPaymentsResponse,
   PurchaseResponse,
   UpdateVideoRequest,
 } from '@tesor_gp/shared';
-import { api, uploadWithProgress } from './client';
+import { api, putFileWithProgress, uploadWithProgress } from './client';
 
 export interface Page<T> {
   items: T[];
@@ -55,6 +57,9 @@ export const walletApi = {
   unlink: () => api<{ user: UserDto }>('/wallet/link', { method: 'DELETE' }),
   summary: () => api<WalletSummary>('/wallet/summary'),
   transactions: (cursor?: string) => api<Page<WalletTransaction>>('/wallet/transactions', { query: { cursor } }),
+  /** Built-in wallets: buy coins with a (demo) bank payment. The coins arrive once the purchase is on the blockchain. */
+  buyCoins: (accountId: string, amountWei: string) =>
+    api<{ orderId: string; amountWei: string; summary: WalletSummary }>('/wallet/topup', { method: 'POST', body: { accountId, amountWei } }),
 };
 
 export const purchaseApi = {
@@ -104,6 +109,12 @@ export const creatorApi = {
   becomeCreator: (b: { channelName: string; bio?: string }) => api<{ user: UserDto }>('/creator/profile', { method: 'POST', body: b }),
   videos: (cursor?: string) => api<Page<VideoDto>>('/creator/videos', { query: { cursor } }),
   upload: (form: FormData, onProgress: (f: number) => void, signal: AbortSignal) => uploadWithProgress<VideoDto>('/creator/videos', form, onProgress, signal),
+  /** Object storage: ask for a signed URL, PUT the file straight to storage, then tell the API it has arrived. */
+  directUpload: async (file: File, fields: Record<string, string>, onProgress: (f: number) => void, signal: AbortSignal): Promise<VideoDto> => {
+    const ticket = await api<CreateUploadResponse>('/creator/uploads', { method: 'POST', body: { fileName: file.name, contentType: file.type, sizeBytes: file.size }, signal });
+    await putFileWithProgress(ticket.uploadUrl, file, ticket.headers, onProgress, signal);
+    return api<VideoDto>('/creator/uploads/complete', { method: 'POST', body: { uploadToken: ticket.uploadToken, ...fields }, signal });
+  },
   update: (id: string, b: UpdateVideoRequest) => api<VideoDto>(`/creator/videos/${encodeURIComponent(id)}`, { method: 'PATCH', body: b }),
   publish: (id: string) => api<VideoDto>(`/creator/videos/${encodeURIComponent(id)}/publish`, { method: 'POST' }),
   unpublish: (id: string) => api<VideoDto>(`/creator/videos/${encodeURIComponent(id)}/unpublish`, { method: 'POST' }),
@@ -111,6 +122,8 @@ export const creatorApi = {
   remove: (id: string) => api<void>(`/creator/videos/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   analytics: () => api<CreatorAnalytics>('/creator/analytics'),
   earnings: () => api<CreatorEarnings>('/creator/earnings'),
+  /** Built-in wallets: asks the platform to pay the creator's earnings out to their wallet. */
+  payout: () => api<{ amountWei: string }>('/creator/earnings/payout', { method: 'POST', body: {} }),
 };
 
 export const adminApi = {
@@ -120,4 +133,5 @@ export const adminApi = {
   settlements: (status?: string, cursor?: string) => api<Page<AdminSettlementDto>>('/admin/settlements', { query: { status, cursor } }),
   retrySettlement: (id: string) => api<{ queued: boolean }>(`/admin/settlements/${encodeURIComponent(id)}/retry`, { method: 'POST' }),
   health: () => api<HealthReport>('/admin/health'),
+  revenue: () => api<AdminRevenue>('/admin/revenue'),
 };

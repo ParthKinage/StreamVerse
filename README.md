@@ -28,6 +28,11 @@ blockchain mode (`PAYMENTS_MODE=chain` in `.env`).
 
 ## Quick start (blockchain mode)
 
+With `PAYMENTS_MODE=chain` every account gets a built-in blockchain wallet (`WALLET_MODE=managed`, the default): users
+buy coins, pay creators on-chain and never need MetaMask or gas, and the platform keeps a commission on each sale. Set
+`WALLET_MODE=external` for the original flow where users link MetaMask. See [`docs/DEMO.md`](docs/DEMO.md) and, for a
+hosted deployment, [`docs/HOSTING_BLOCKCHAIN.md`](docs/HOSTING_BLOCKCHAIN.md).
+
 ```bash
 npm ci
 cp .env.example .env            # on Windows: copy .env.example .env
@@ -49,6 +54,9 @@ Open http://localhost:3000. Seeded accounts (password `Password123!`) and the de
 | `npm run reconcile` | Compare the database ledger against on-chain escrow; exits 1 on any difference |
 | `npm run setup:local` | One-command local setup (see above) |
 | `npm run deploy:amoy -w @tesor_gp/contracts` | Deploy to Polygon Amoy (needs `DEPLOYER_PRIVATE_KEY`) |
+| `npx hardhat platform:status --network <name>` (in `contracts/`) | Show the commission rate and the commission earned |
+| `npx hardhat platform:withdraw-fees --to <address> --network <name>` | Send the earned commission to a treasury address |
+| `npx hardhat platform:set-fee --bps <n> --network <name>` | Change the commission (maximum 3000 = 30%) |
 
 ## Configuration
 

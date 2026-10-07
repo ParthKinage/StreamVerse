@@ -16,11 +16,28 @@ Chain mode (below) is the original token-on-a-blockchain demo, selected with `PA
 
 ---
 
-## Chain mode demo
+## Chain mode demo with built-in wallets (no MetaMask)
 
+Set `PAYMENTS_MODE=chain` in `.env` (`WALLET_MODE=managed` is the default), run the steps in "0. Prepare" below, then:
 
-A ten-minute walkthrough that shows every part of the product. It runs on the local Hardhat chain by default; the Amoy
-variant is at the end. All steps use the browser wallet (MetaMask) unless noted.
+1. Sign up at http://localhost:3000. You land on the wallet page with your own blockchain address. Within a few
+   seconds the 50 STRM welcome bonus shows as confirmed. No browser wallet is involved.
+2. Press **Buy coins**, choose a demo bank account and an amount. The coins show as "on its way", then as confirmed.
+3. Open a paid video and press **Unlock**. It plays at once; the payment settles on-chain a moment later.
+4. Sign in as `creator1@streamverse.test` (password `Password123!`), open **Wallet**, and press **Pay out to my wallet**.
+   The creator's share (70% with the default commission) arrives in the creator's wallet as STRM tokens.
+5. Sign in as `admin@streamverse.test` and open **Admin**, **Revenue**: sales, the platform's commission, coins sold
+   and the gas balance of the platform wallet.
+6. In a terminal: `cd contracts`, then `npx hardhat platform:status --network localhost` shows the commission held by
+   the contract, and `npx hardhat platform:withdraw-fees --to <address> --network localhost` sends it to a treasury.
+
+Hosting this on a public test network is described in [`HOSTING_BLOCKCHAIN.md`](HOSTING_BLOCKCHAIN.md).
+
+## Chain mode demo with linked browser wallets
+
+A ten-minute walkthrough that shows every part of the product with MetaMask. Set `WALLET_MODE=external` in `.env` first.
+It runs on the local Hardhat chain by default; the Amoy variant is at the end. All steps use the browser wallet
+(MetaMask) unless noted.
 
 ## 0. Prepare
 

@@ -7,11 +7,11 @@ export const transcodeJobId = (videoId: string): string => `transcode-${videoId}
 const videoIdFromJob = (jobId: string): string | undefined => (jobId.startsWith('transcode-') ? jobId.slice('transcode-'.length) : undefined);
 
 export async function enqueueTranscode(ctx: AppContext, videoId: string, inputPath: string): Promise<void> {
-  const outputDir = ctx.storage.resolveHlsPath(videoId, '.');
-  if (!outputDir) throw new Error('Invalid video id');
+  const target = ctx.storage.transcodeTarget(videoId);
+  if (!target) throw new Error('Invalid video id');
   const old = await ctx.queues.transcode.getJob(transcodeJobId(videoId));
   if (old) await old.remove().catch(() => undefined);
-  await ctx.queues.transcode.add('transcode', { videoId, inputPath, outputDir }, { jobId: transcodeJobId(videoId) });
+  await ctx.queues.transcode.add('transcode', { videoId, inputPath, ...target }, { jobId: transcodeJobId(videoId) });
 }
 
 async function applyResult(ctx: AppContext, videoId: string, result: TranscodeJobResult): Promise<void> {

@@ -42,6 +42,12 @@ export async function getCreatorClaimable(ctx: AppContext, creatorProfileId: str
   return claimable > 0n ? claimable : 0n;
 }
 
+/** Everything already paid out to this creator's wallet (EarningsClaimed events). */
+export async function getPaidOut(ctx: AppContext, address: string): Promise<bigint> {
+  const claims = await ctx.prisma.chainEvent.findMany({ where: { address: address.toLowerCase(), name: 'EarningsClaimed' }, select: { payload: true } });
+  return claims.reduce((sum, c) => sum + BigInt((c.payload as Record<string, string>).amount ?? '0'), 0n);
+}
+
 export async function getLifetimeEarned(ctx: AppContext, creatorProfileId: string): Promise<bigint> {
   const agg = await ctx.prisma.paymentSettlement.aggregate({
     where: { creatorId: creatorProfileId, status: 'SETTLED' },

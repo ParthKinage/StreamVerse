@@ -12,6 +12,7 @@ import { authRoutes } from './modules/auth';
 import { bankRoutes } from './modules/bank';
 import { purchaseRoutes } from './modules/purchase';
 import { catalogRoutes } from './modules/catalog';
+import { managedRoutes } from './modules/managed';
 import { creatorRoutes } from './modules/creator';
 import { opsRoutes } from './modules/ops';
 import { playbackRoutes } from './modules/playback';
@@ -49,6 +50,7 @@ export function createApp(ctx: AppContext): express.Express {
     usersRoutes(ctx),
     walletRoutes(ctx),
     bankRoutes(ctx),
+    managedRoutes(ctx),
     purchaseRoutes(ctx),
     catalogRoutes(ctx),
     creatorRoutes(ctx),

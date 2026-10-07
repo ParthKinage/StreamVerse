@@ -17,7 +17,10 @@ import { decodeCursor, encodeCursor, isUniqueViolation, toWei, userToDto } from 
 import { claimableFor, getCreatorClaimable } from '../creator/earnings';
 import { listBankAccounts } from '../bank/bank.service';
 import { rebuildEscrowFromEvents } from '../indexer';
+import { arrivingFor } from '../managed/coins';
+import { isManaged } from '../managed/wallets';
 import { grantWelcomeReward } from '../rewards';
+import { peekFeeBps } from '../settlement/settlement.service';
 import { getBalances } from './balance';
 
 const NONCE_TTL_SEC = 300;
@@ -35,6 +38,7 @@ export function linkMessage(params: { address: string; nonce: string; userId: st
 
 function requireChainMode(ctx: AppContext): void {
   if (ctx.env.PAYMENTS_MODE !== 'chain') throw new AppError(404, 'NOT_AVAILABLE_IN_THIS_MODE', 'Wallet linking is not used in demo-bank mode');
+  if (isManaged(ctx)) throw new AppError(404, 'NOT_AVAILABLE_IN_THIS_MODE', 'Every account already has a built-in wallet; there is nothing to link');
 }
 
 export async function createNonce(ctx: AppContext, userId: string, address: string): Promise<NonceResponse> {
@@ -86,6 +90,7 @@ export async function linkWallet(ctx: AppContext, userId: string, address: strin
 }
 
 export async function unlinkWallet(ctx: AppContext, userId: string): Promise<UserDto> {
+  if (isManaged(ctx)) throw new AppError(404, 'NOT_AVAILABLE_IN_THIS_MODE', 'Built-in wallets cannot be unlinked');
   const user = await ctx.prisma.user.findUnique({ where: { id: userId }, include: { creatorProfile: { select: { id: true, channelName: true } } } });
   if (!user) throw new AppError(401, 'UNAUTHENTICATED', 'User no longer exists');
   if (!user.walletAddress) return userToDto(user);
@@ -115,6 +120,7 @@ export async function getSummary(ctx: AppContext, userId: string): Promise<Walle
   if (!user) throw new AppError(401, 'UNAUTHENTICATED', 'User no longer exists');
   const b = await getBalances(ctx.prisma, userId);
   const claimable = user.creatorProfile ? await claimableFor(ctx, userId, user.creatorProfile.id, user.walletAddress) : 0n;
+  const arriving = isManaged(ctx) ? await arrivingFor(ctx, userId) : 0n;
   return {
     walletAddress: user.walletAddress,
     escrowWei: weiToString(b.escrow),
@@ -123,32 +129,40 @@ export async function getSummary(ctx: AppContext, userId: string): Promise<Walle
     unsettledChargesWei: weiToString(b.unappliedCharges + b.openSessionCharges),
     availableWei: weiToString(b.available),
     creatorEarningsWei: weiToString(claimable),
+    arrivingWei: weiToString(arriving),
   };
 }
 
 export function getConfig(ctx: AppContext): ConfigResponse {
   const chainName = ctx.env.CHAIN_ID === 80002 ? 'Polygon Amoy' : ctx.env.CHAIN_ID === 31337 ? 'Hardhat Local' : `Chain ${ctx.env.CHAIN_ID}`;
   const wei = (units: number): string => (BigInt(units) * 10n ** 18n).toString();
+  const managed = isManaged(ctx);
   return {
     paymentsMode: ctx.env.PAYMENTS_MODE,
+    walletMode: managed ? 'managed' : 'external',
+    fiatSymbol: ctx.env.CURRENCY_SYMBOL,
+    minPayoutWei: managed ? wei(ctx.env.MIN_PAYOUT_STRM) : '0',
     currencyCode: ctx.env.PAYMENTS_MODE === 'bank' ? ctx.env.CURRENCY_CODE : 'STRM',
     currencySymbol: ctx.env.PAYMENTS_MODE === 'bank' ? ctx.env.CURRENCY_SYMBOL : '',
-    bankAccounts: ctx.env.PAYMENTS_MODE === 'bank' ? listBankAccounts() : [],
+    bankAccounts: ctx.env.PAYMENTS_MODE === 'bank' || managed ? listBankAccounts() : [],
     minTopUpWei: wei(ctx.env.BANK_MIN_TOPUP),
-    maxTopUpWei: wei(ctx.env.BANK_MAX_TOPUP),
+    // With built-in wallets one purchase can never exceed what the account may buy in a day.
+    maxTopUpWei: wei(managed ? Math.min(ctx.env.BANK_MAX_TOPUP, ctx.env.TOPUP_DAILY_LIMIT_STRM) : ctx.env.BANK_MAX_TOPUP),
     chainId: ctx.env.CHAIN_ID,
     chainName,
-    rpcUrl: ctx.env.CHAIN_ID === 31337 ? ctx.env.RPC_URL : ctx.env.POLYGON_AMOY_RPC_URL,
+    // Never the server's RPC URL: on a public chain that usually carries a private API key.
+    rpcUrl: ctx.env.PUBLIC_RPC_URL ?? (ctx.env.CHAIN_ID === 31337 ? ctx.env.RPC_URL : ctx.env.CHAIN_ID === 80002 ? 'https://rpc-amoy.polygon.technology' : ''),
     explorerUrl: ctx.env.EXPLORER_URL,
     streamCoinAddress: ctx.deployment?.streamCoin ?? null,
     paymentRouterAddress: ctx.deployment?.paymentRouter ?? null,
     heartbeatIntervalSec: ctx.env.HEARTBEAT_INTERVAL_SEC,
     welcomeBonusWei: (BigInt(ctx.env.WELCOME_BONUS_STRM) * 10n ** 18n).toString(),
     withdrawDelaySec: ctx.deployment?.withdrawDelaySec ?? 900,
-    feeBps: ctx.env.PAYMENTS_MODE === 'bank' ? ctx.env.PLATFORM_FEE_BPS : (ctx.deployment?.feeBps ?? 1000),
+    feeBps: peekFeeBps(ctx),
     maxPriceWei: (BigInt(MAX_VIDEO_PRICE_STRM) * 10n ** 18n).toString(),
     accessHours: ctx.env.ACCESS_HOURS,
     maxUploadMb: ctx.env.MAX_UPLOAD_MB,
+    uploadMode: ctx.storage.kind === 's3' ? 'direct' : 'multipart',
     categories: [...CATEGORIES],
   };
 }
@@ -160,6 +174,8 @@ const EVENT_LABELS: Record<string, { type: WalletTransaction['type']; label: str
   Withdrawn: { type: 'WITHDRAW_EXECUTED', label: 'Withdrawal completed' },
   EarningsClaimed: { type: 'EARNINGS_CLAIMED', label: 'Earnings claimed' },
 };
+/** Built-in wallets: deposits are shown as the purchase or bonus that caused them, and viewers cannot withdraw. */
+const MANAGED_EVENTS = ['EarningsClaimed'];
 
 export async function listTransactions(
   ctx: AppContext,
@@ -174,10 +190,11 @@ export async function listTransactions(
   const dateFilter = beforeDate ? { lt: beforeDate } : undefined;
   const explorer = (hash: string | null): string | null => (hash ? `${ctx.env.EXPLORER_URL}/tx/${hash}` : null);
 
-  const [events, settlements, rewards] = await Promise.all([
+  const managed = isManaged(ctx);
+  const [events, settlements, rewards, orders] = await Promise.all([
     user?.walletAddress
       ? ctx.prisma.chainEvent.findMany({
-          where: { address: user.walletAddress, name: { in: Object.keys(EVENT_LABELS) }, ...(dateFilter ? { createdAt: dateFilter } : {}) },
+          where: { address: user.walletAddress, name: { in: managed ? MANAGED_EVENTS : Object.keys(EVENT_LABELS) }, ...(dateFilter ? { createdAt: dateFilter } : {}) },
           orderBy: { createdAt: 'desc' },
           take: limit + 1,
         })
@@ -193,14 +210,30 @@ export async function listTransactions(
       orderBy: { createdAt: 'desc' },
       take: limit + 1,
     }),
+    managed
+      ? ctx.prisma.coinOrder.findMany({ where: { userId, ...(dateFilter ? { createdAt: dateFilter } : {}) }, orderBy: { createdAt: 'desc' }, take: limit + 1 })
+      : Promise.resolve([]),
   ]);
+  const sent = (status: string): WalletTransaction['status'] => (status === 'SENT' ? 'CONFIRMED' : status === 'FAILED' ? 'FAILED' : 'PENDING');
 
   const all: Array<WalletTransaction & { sort: Date }> = [
     ...events.map((e) => {
       const meta = EVENT_LABELS[e.name] as { type: WalletTransaction['type']; label: string };
       const amount = (e.payload as Record<string, string>).amount ?? '0';
-      return { id: `evt-${e.id}`, type: meta.type, status: 'CONFIRMED' as const, amountWei: amount, txHash: e.txHash, explorerUrl: explorer(e.txHash), label: meta.label, createdAt: e.createdAt.toISOString(), sort: e.createdAt };
+      const label = managed && e.name === 'EarningsClaimed' ? 'Earnings paid to your wallet' : meta.label;
+      return { id: `evt-${e.id}`, type: meta.type, status: 'CONFIRMED' as const, amountWei: amount, txHash: e.txHash, explorerUrl: explorer(e.txHash), label, createdAt: e.createdAt.toISOString(), sort: e.createdAt };
     }),
+    ...orders.map((o) => ({
+      id: `buy-${o.id}`,
+      type: 'DEPOSIT' as const,
+      status: sent(o.status),
+      amountWei: toWei(o.amountSTRM).toString(),
+      txHash: o.txHash || null,
+      explorerUrl: explorer(o.txHash || null),
+      label: o.label,
+      createdAt: o.createdAt.toISOString(),
+      sort: o.createdAt,
+    })),
     ...settlements.map((s) => ({
       id: `stl-${s.id}`,
       type: 'SETTLEMENT' as const,
@@ -215,10 +248,10 @@ export async function listTransactions(
     ...rewards.map((r) => ({
       id: `rwd-${r.id}`,
       type: 'REWARD' as const,
-      status: r.status === 'SENT' ? ('CONFIRMED' as const) : r.status === 'FAILED' ? ('FAILED' as const) : ('PENDING' as const),
+      status: sent(r.status),
       amountWei: toWei(r.amountSTRM).toString(),
-      txHash: r.txHash,
-      explorerUrl: explorer(r.txHash),
+      txHash: r.txHash || null,
+      explorerUrl: explorer(r.txHash || null),
       label: r.reason === 'WELCOME' ? 'Welcome bonus' : 'Reward',
       createdAt: r.createdAt.toISOString(),
       sort: r.createdAt,

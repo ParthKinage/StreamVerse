@@ -105,7 +105,7 @@ export function Layout(): JSX.Element {
           </Suspense>
         </ErrorBoundary>
       </main>
-      <footer className="footer muted small">StreamVerse · pay only for the seconds you watch</footer>
+      <footer className="footer muted small">StreamVerse · pay once per video with StreamCoin</footer>
     </div>
   );
 }

@@ -35,6 +35,14 @@ export interface SettlementItem {
   amount: bigint;
 }
 
+/** One coin credit to a viewer's escrow (a top-up or a bonus). `id` makes it impossible to credit twice. */
+export interface CreditItem {
+  /** bytes32 hex id. */
+  id: string;
+  viewer: string;
+  amount: bigint;
+}
+
 export interface EscrowState {
   escrow: bigint;
   pendingWithdrawal: bigint;
@@ -243,6 +251,15 @@ export class ChainAdapter {
     return Promise.all(ids.map((id) => this.isSettled(id)));
   }
 
+  isCredited(id: string): Promise<boolean> {
+    return this.call(() => this.routerRead.getFunction('credited')(id) as Promise<boolean>);
+  }
+
+  /** Returns, for each id, whether it has already been credited on-chain. */
+  async areCredited(ids: string[]): Promise<boolean[]> {
+    return Promise.all(ids.map((id) => this.isCredited(id)));
+  }
+
   getTimestamp(blockNumber: number): Promise<number> {
     return this.call(async () => {
       const block = await this.provider.getBlock(blockNumber);
@@ -336,6 +353,56 @@ export class ChainAdapter {
     );
   }
 
+  /**
+   * Credits several viewers' escrow in one transaction from the relayer's own token balance (coins bought, bonuses).
+   * Retried on RPC failure; ids are unique on-chain so a retry can never credit twice.
+   */
+  async creditBatch(items: CreditItem[]): Promise<TxResult> {
+    this.requireRelayer();
+    await this.ensureRouterAllowance(items.reduce((sum, i) => sum + i.amount, 0n));
+    let attempt = 0;
+    for (;;) {
+      try {
+        return await this.send(() => this.router.getFunction('creditBatch')(items.map(toCreditTuple)));
+      } catch (err) {
+        if (!(err instanceof RpcUnavailable) || attempt >= this.config.retries) throw err;
+        await sleep(this.config.retryBaseDelayMs * 2 ** attempt);
+        attempt += 1;
+        try {
+          const done = await this.areCredited(items.map((i) => i.id));
+          if (done.every(Boolean)) {
+            const first = items[0];
+            const found = first ? await this.findCreditTx(first.id, 0) : null;
+            if (found) return found;
+          }
+        } catch {
+          // still unreachable: fall through to the next attempt
+        }
+      }
+    }
+  }
+
+  /** Dry-runs a credit batch. Throws Reverted with the custom error name. */
+  async simulateCreditBatch(items: CreditItem[]): Promise<void> {
+    this.requireRelayer();
+    await this.call(() => this.router.getFunction('creditBatch').staticCall(items.map(toCreditTuple)), this.config.retries);
+  }
+
+  /** Finds the transaction that credited `id` (scans Credited logs from `fromBlock`). */
+  async findCreditTx(id: string, fromBlock: number): Promise<TxResult | null> {
+    const logs = await this.call(() =>
+      this.routerRead.queryFilter(this.routerRead.filters.Credited?.(id) ?? 'Credited', fromBlock, 'latest'),
+    );
+    const log = logs[0] as EventLog | undefined;
+    return log ? { txHash: log.transactionHash, blockNumber: log.blockNumber } : null;
+  }
+
+  /** Pays a creator's earnings to the creator's own address; the relayer only pays the gas. */
+  async claimEarningsFor(creator: string): Promise<TxResult> {
+    this.requireRelayer();
+    return this.send(() => this.router.getFunction('claimEarningsFor')(creator));
+  }
+
   /** Credits `viewer`'s escrow from the relayer's own token balance (welcome bonus). Not retried automatically. */
   async depositFor(viewer: string, amount: bigint): Promise<TxResult> {
     this.requireRelayer();
@@ -364,6 +431,10 @@ export class ChainAdapter {
 
 function toTuple(i: SettlementItem): { id: string; viewer: string; creator: string; amount: bigint } {
   return { id: i.id, viewer: i.viewer, creator: i.creator, amount: i.amount };
+}
+
+function toCreditTuple(i: CreditItem): { id: string; viewer: string; amount: bigint } {
+  return { id: i.id, viewer: i.viewer, amount: i.amount };
 }
 
 export type { EventLog };

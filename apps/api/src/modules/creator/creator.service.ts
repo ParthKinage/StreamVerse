@@ -16,7 +16,9 @@ import { AppError, badRequest, conflict, forbidden, notFound } from '../../middl
 import { decodeCursor, encodeCursor, fromWei, toWei, userToDto, videoInclude, videoToDto } from '../common';
 import { decorateVideos } from '../catalog';
 import { enqueueTranscode } from '../media';
-import { claimableFor, getLifetimeEarned } from './earnings';
+import { isPayoutPending } from '../managed/payout';
+import { isManaged } from '../managed/wallets';
+import { claimableFor, getLifetimeEarned, getPaidOut } from './earnings';
 
 const MAX_PRICE_WEI = parseSTRM(String(MAX_VIDEO_PRICE_STRM));
 
@@ -75,6 +77,13 @@ export async function createVideo(
   await enqueueTranscode(ctx, video.id, filePath);
   ctx.events.emit(DOMAIN_EVENTS.VIDEO_UPLOADED, { videoId: video.id });
   return videoToDto(video);
+}
+
+/** The video (if any) this creator already made from an uploaded original; makes direct-upload completion idempotent. */
+export async function findVideoByOriginal(ctx: AppContext, userId: string, originalFilePath: string): Promise<VideoDto | undefined> {
+  const profile = await requireCreatorProfile(ctx, userId);
+  const video = await ctx.prisma.video.findFirst({ where: { creatorId: profile.id, originalFilePath, archivedAt: null }, include: videoInclude });
+  return video ? videoToDto(video) : undefined;
 }
 
 export async function listOwnVideos(ctx: AppContext, userId: string, cursor: string | undefined, limit: number) {
@@ -140,7 +149,7 @@ export async function retryTranscode(ctx: AppContext, userId: string, videoId: s
 export async function archiveVideo(ctx: AppContext, userId: string, videoId: string): Promise<void> {
   const video = await ownedVideo(ctx, userId, videoId);
   await ctx.prisma.video.update({ where: { id: videoId }, data: { isPublished: false, archivedAt: ctx.now() } });
-  await ctx.storage.deleteHlsDir(video.id).catch(() => undefined);
+  await ctx.storage.deleteVideoMedia(video.id).catch(() => undefined);
   await ctx.storage.deleteFile(video.originalFilePath).catch(() => undefined);
 }
 
@@ -152,10 +161,13 @@ export async function getEarnings(ctx: AppContext, userId: string): Promise<Crea
     where: { creatorId: profile.id, escrowAppliedAt: null, status: { in: ['PENDING', 'SETTLED'] } },
     _sum: { creatorEarningsSTRM: true },
   });
+  const managed = isManaged(ctx);
   return {
     claimableWei: weiToString(claimable),
     lifetimeEarnedWei: weiToString(await getLifetimeEarned(ctx, profile.id)),
     pendingSettlementWei: weiToString(pending._sum.creatorEarningsSTRM ? toWei(pending._sum.creatorEarningsSTRM) : 0n),
+    paidOutWei: weiToString(ctx.env.PAYMENTS_MODE === 'chain' && user.walletAddress ? await getPaidOut(ctx, user.walletAddress) : 0n),
+    payoutPending: managed ? await isPayoutPending(ctx, userId) : false,
   };
 }
 

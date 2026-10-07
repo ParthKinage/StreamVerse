@@ -10,6 +10,9 @@ import type { WalletState } from './walletMachine';
 
 const config: ConfigResponse = {
   paymentsMode: 'chain',
+  walletMode: 'external',
+  fiatSymbol: '₹',
+  minPayoutWei: '0',
   currencyCode: 'STRM',
   currencySymbol: '',
   bankAccounts: [],
@@ -28,6 +31,7 @@ const config: ConfigResponse = {
   maxPriceWei: '500000000000000000000',
   accessHours: 48,
   maxUploadMb: 1024,
+  uploadMode: 'multipart',
   categories: ['General'],
 };
 const user: UserDto = { id: 'u1', email: 'a@b.co', username: 'alice', role: 'USER', walletAddress: '0x' + 'a'.repeat(40), channelName: null, createdAt: new Date().toISOString() };
@@ -63,7 +67,7 @@ function renderDialog(ui: ReactNode = <TopUpDialog onClose={vi.fn()} onDone={vi.
 }
 
 beforeEach(() => {
-  summary = { walletAddress: user.walletAddress, escrowWei: '0', pendingWithdrawalWei: '0', withdrawUnlockAt: null, unsettledChargesWei: '0', availableWei: '0', creatorEarningsWei: '0' };
+  summary = { walletAddress: user.walletAddress, escrowWei: '0', pendingWithdrawalWei: '0', withdrawUnlockAt: null, unsettledChargesWei: '0', availableWei: '0', creatorEarningsWei: '0', arrivingWei: '0' };
   chain.topUp.mockReset();
   chain.gas.mockReset().mockResolvedValue(1n);
   chain.balance.mockReset().mockResolvedValue(100n * 10n ** 18n);

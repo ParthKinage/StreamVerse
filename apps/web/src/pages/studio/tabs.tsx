@@ -91,19 +91,26 @@ export function UploadTab({ onUploaded }: { onUploaded(): void }): JSX.Element {
     const v = validateVideoForm(values, config ? Number(BigInt(config.maxPriceWei) / 10n ** 18n) : undefined);
     setErrors(v.errors);
     if (Object.keys(v.errors).length) return;
-    const form = new FormData();
-    form.set('title', values.title.trim());
-    form.set('description', values.description.trim());
-    form.set('category', values.category);
-    form.set('tags', (v.tags ?? []).join(','));
-    if (v.priceWei !== undefined) form.set('priceWei', v.priceWei);
-    form.set('file', file);
+    const fields: Record<string, string> = {
+      title: values.title.trim(),
+      description: values.description.trim(),
+      category: values.category,
+      tags: (v.tags ?? []).join(','),
+      ...(v.priceWei !== undefined ? { priceWei: v.priceWei } : {}),
+    };
     const ctl = new AbortController();
     abortRef.current = ctl;
     setProgress(0);
     setServerError(null);
     try {
-      await creatorApi.upload(form, setProgress, ctl.signal);
+      if (config?.uploadMode === 'direct') {
+        await creatorApi.directUpload(file, fields, setProgress, ctl.signal);
+      } else {
+        const form = new FormData();
+        for (const [k, val] of Object.entries(fields)) form.set(k, val);
+        form.set('file', file);
+        await creatorApi.upload(form, setProgress, ctl.signal);
+      }
       await qc.invalidateQueries({ queryKey: keys.creatorVideos });
       toast.success('Upload complete. Transcoding has started.');
       onUploaded();

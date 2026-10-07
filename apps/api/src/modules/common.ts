@@ -27,6 +27,16 @@ export const videoInclude = {
 
 export type VideoWithCreator = Prisma.VideoGetPayload<{ include: typeof videoInclude }>;
 
+/**
+ * Object-storage thumbnails live in a version folder (hls/<id>/<version>/thumbnail.jpg); the version goes into the URL
+ * so browsers and the CDN can cache it for a long time and still see a new picture after a re-transcode.
+ */
+export function thumbnailUrl(videoId: string, thumbnailPath: string | null): string | null {
+  if (!thumbnailPath) return null;
+  const version = /^hls\/[^/]+\/([^/]+)\/thumbnail\.jpg$/.exec(thumbnailPath)?.[1];
+  return `/api/v1/videos/${videoId}/thumbnail${version ? `?v=${version}` : ''}`;
+}
+
 export function videoToDto(
   v: VideoWithCreator,
   extras: { liked?: boolean; inWatchlist?: boolean; likesCount?: number; accessUntil?: string | null } = {},
@@ -39,7 +49,7 @@ export function videoToDto(
     tags: v.tags,
     durationSeconds: v.durationSeconds,
     priceWei: toWei(v.priceSTRM).toString(),
-    thumbnailUrl: v.thumbnailPath ? `/api/v1/videos/${v.id}/thumbnail` : null,
+    thumbnailUrl: thumbnailUrl(v.id, v.thumbnailPath),
     viewsCount: v.viewsCount,
     createdAt: v.createdAt.toISOString(),
     creator: { id: v.creator.id, channelName: v.creator.channelName, username: v.creator.user.username },

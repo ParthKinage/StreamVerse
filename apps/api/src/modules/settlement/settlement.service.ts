@@ -23,13 +23,22 @@ export async function getFeeBps(ctx: AppContext): Promise<number> {
   const now = Date.now();
   if (feeCache && now - feeCache.at < 60_000) return feeCache.value;
   try {
-    const value = ctx.chain ? await ctx.chain.getFeeBps() : DEFAULT_FEE_BPS;
+    const value = ctx.chain ? await ctx.chain.getFeeBps() : (ctx.deployment?.feeBps ?? DEFAULT_FEE_BPS);
     feeCache = { value, at: now };
     return value;
   } catch {
-    feeCache = { value: feeCache?.value ?? DEFAULT_FEE_BPS, at: now - 50_000 };
+    feeCache = { value: feeCache?.value ?? ctx.deployment?.feeBps ?? DEFAULT_FEE_BPS, at: now - 50_000 };
     return feeCache.value;
   }
+}
+/**
+ * The commission rate without waiting for the chain: the last value read from the contract (or the deployment record
+ * until the first read finishes). A refresh is started in the background when the value is getting old.
+ */
+export function peekFeeBps(ctx: AppContext): number {
+  if (ctx.env.PAYMENTS_MODE === 'bank') return ctx.env.PLATFORM_FEE_BPS;
+  if (!feeCache || Date.now() - feeCache.at >= 60_000) void getFeeBps(ctx).catch(() => undefined);
+  return feeCache?.value ?? ctx.deployment?.feeBps ?? DEFAULT_FEE_BPS;
 }
 export function resetFeeCache(): void {
   feeCache = undefined;
@@ -42,7 +51,7 @@ export async function enqueueSettlement(ctx: AppContext): Promise<void> {
     return;
   }
   try {
-    await ctx.queues.settlement.add('settle', {}, { attempts: ctx.env.SETTLE_MAX_ATTEMPTS, backoff: { type: 'exponential', delay: 2000 } });
+    await ctx.queues.settlement.add('settle', {}, { delay: ctx.env.BATCH_WINDOW_MS, attempts: ctx.env.SETTLE_MAX_ATTEMPTS, backoff: { type: 'exponential', delay: 2000 } });
   } catch (err) {
     // Redis down: the sweeper will pick the PENDING row up when it is back.
     ctx.logger.warn({ err: (err as Error).message }, 'could not enqueue settlement job');
@@ -114,7 +123,8 @@ export async function processSettlements(ctx: AppContext): Promise<{ settled: nu
     let reconciled = 0;
     for (const [i, r] of rows.entries()) {
       if (flags[i]) {
-        const found = await chain.findSettlementTx(r.settlementKey, ctx.deployment?.deploymentBlock ?? 0);
+        // The hash is only for display; a refused log search must not block the settlements behind this one.
+        const found = await chain.findSettlementTx(r.settlementKey, ctx.deployment?.deploymentBlock ?? 0).catch(() => null);
         await settleSetAsSettled(ctx, [r], found?.txHash ?? '');
         reconciled += 1;
       } else todo.push(r);

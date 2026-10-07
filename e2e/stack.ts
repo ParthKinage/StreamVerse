@@ -223,6 +223,9 @@ async function startStackInner(cleanups: Array<() => Promise<unknown>>): Promise
           COOKIE_SECRET: 'e2e-cookie-secret-0123456789',
           PLAYBACK_SIGNING_SECRET: 'e2e-playback-secret-0123456789',
           PAYMENTS_MODE: 'chain',
+          // E2E_WALLET_MODE=managed runs the built-in wallet scenario; the default exercises linked browser wallets.
+          WALLET_MODE: process.env.E2E_WALLET_MODE === 'managed' ? 'managed' : 'external',
+          BATCH_WINDOW_MS: '300',
           CHAIN_ID: '31337',
           RPC_URL: proxyUrl,
           STREAMCOIN_TOKEN_ADDRESS: chain.streamCoin,

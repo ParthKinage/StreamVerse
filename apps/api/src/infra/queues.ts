@@ -6,8 +6,10 @@ export const QUEUE_SETTLEMENT = 'settlement';
 
 export interface TranscodeJobData {
   videoId: string;
+  /** Local path, or object key when `storage` is "s3" (same shape as the worker's TranscodeJobData). */
   inputPath: string;
   outputDir: string;
+  storage?: 'local' | 's3';
 }
 
 export interface TranscodeJobResult {
@@ -15,6 +17,7 @@ export interface TranscodeJobResult {
   thumbnailPath: string;
   durationSeconds: number;
   renditions: string[];
+  stats?: { seconds: number; peakRssMiB: number | null };
 }
 
 export interface Queues {

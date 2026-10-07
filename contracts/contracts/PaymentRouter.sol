@@ -16,6 +16,10 @@ import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
  * batches, debiting the viewer and crediting the creator and the platform. Viewers withdraw unspent escrow in two
  * steps (request, then execute after `withdrawDelay`) so charges that are still pending off-chain can settle first.
  * Settlement draws from escrow first and then from the viewer's pending withdrawal.
+ *
+ * The relayer can also run the platform's built-in wallets without those wallets ever needing gas: `creditBatch` adds
+ * coins a viewer bought (or was given) to their escrow, and `claimEarningsFor` pays a creator's earnings out to the
+ * creator's own address. Neither can move funds anywhere except the account they belong to.
  */
 contract PaymentRouter is AccessControl, ReentrancyGuard, Pausable {
     using SafeERC20 for IERC20;
@@ -24,6 +28,12 @@ contract PaymentRouter is AccessControl, ReentrancyGuard, Pausable {
         bytes32 id;
         address viewer;
         address creator;
+        uint256 amount;
+    }
+
+    struct Credit {
+        bytes32 id;
+        address viewer;
         uint256 amount;
     }
 
@@ -42,8 +52,10 @@ contract PaymentRouter is AccessControl, ReentrancyGuard, Pausable {
     mapping(address creator => uint256) public creatorEarnings;
     uint256 public platformEarnings;
     mapping(bytes32 id => bool) public settled;
+    mapping(bytes32 id => bool) public credited;
 
     event Deposited(address indexed viewer, address indexed payer, uint256 amount);
+    event Credited(bytes32 indexed id, address indexed viewer, uint256 amount);
     event WithdrawRequested(address indexed viewer, uint256 amount, uint256 unlockAt);
     event WithdrawCancelled(address indexed viewer, uint256 amount);
     event Withdrawn(address indexed viewer, uint256 amount);
@@ -65,6 +77,7 @@ contract PaymentRouter is AccessControl, ReentrancyGuard, Pausable {
     error NoPendingWithdrawal();
     error WithdrawalLocked(uint256 unlockAt);
     error AlreadySettled(bytes32 id);
+    error AlreadyCredited(bytes32 id);
     error BatchTooLarge(uint256 size);
     error EmptyBatch();
     error NothingToClaim();
@@ -173,14 +186,36 @@ contract PaymentRouter is AccessControl, ReentrancyGuard, Pausable {
         }
     }
 
+    /// @notice Adds coins to many viewers' escrow in one transaction, paid from the relayer's own token balance.
+    /// @dev Each id can be credited once, so a retried transaction can never credit the same purchase twice.
+    function creditBatch(Credit[] calldata items) external nonReentrant whenNotPaused onlyRole(SETTLER_ROLE) {
+        uint256 n = items.length;
+        if (n == 0) revert EmptyBatch();
+        if (n > MAX_BATCH_SIZE) revert BatchTooLarge(n);
+        uint256 total = 0;
+        for (uint256 i = 0; i < n; i++) {
+            Credit calldata it = items[i];
+            if (credited[it.id]) revert AlreadyCredited(it.id);
+            if (it.amount == 0) revert ZeroAmount();
+            if (it.viewer == address(0)) revert ZeroAddress();
+            credited[it.id] = true;
+            escrow[it.viewer] += it.amount;
+            total += it.amount;
+            emit Deposited(it.viewer, msg.sender, it.amount);
+            emit Credited(it.id, it.viewer, it.amount);
+        }
+        token.safeTransferFrom(msg.sender, address(this), total);
+    }
+
+    /// @notice Pays a creator's earnings to the creator's own address. The relayer pays the gas, never receives funds.
+    function claimEarningsFor(address creator) external nonReentrant onlyRole(SETTLER_ROLE) {
+        _claim(creator);
+    }
+
     // --------------------------------------------------------------- creator
 
     function claimEarnings() external nonReentrant {
-        uint256 amount = creatorEarnings[msg.sender];
-        if (amount == 0) revert NothingToClaim();
-        creatorEarnings[msg.sender] = 0;
-        token.safeTransfer(msg.sender, amount);
-        emit EarningsClaimed(msg.sender, amount);
+        _claim(msg.sender);
     }
 
     // ----------------------------------------------------------------- admin
@@ -210,6 +245,14 @@ contract PaymentRouter is AccessControl, ReentrancyGuard, Pausable {
     }
 
     // -------------------------------------------------------------- internal
+
+    function _claim(address creator) private {
+        uint256 amount = creatorEarnings[creator];
+        if (amount == 0) revert NothingToClaim();
+        creatorEarnings[creator] = 0;
+        token.safeTransfer(creator, amount);
+        emit EarningsClaimed(creator, amount);
+    }
 
     function _deposit(address viewer, address payer, uint256 amount) private {
         if (amount == 0) revert ZeroAmount();

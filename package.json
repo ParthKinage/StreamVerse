@@ -12,7 +12,7 @@
     "e2e"
   ],
   "scripts": {
-    "build:packages": "npm run build -w @tesor_gp/shared && npm run build -w @tesor_gp/blockchain && npm run build -w @tesor_gp/database",
+    "build:packages": "npm run build -w @tesor_gp/shared && npm run build -w @tesor_gp/storage && npm run build -w @tesor_gp/blockchain && npm run build -w @tesor_gp/database",
     "build": "npm run build:packages && npm run build --workspaces --if-present",
     "dev": "concurrently -k -n shared,chain-sdk,api,worker,ai,web -c gray,gray,blue,magenta,yellow,green \"npm run dev -w @tesor_gp/shared\" \"npm run dev -w @tesor_gp/blockchain\" \"npm run dev -w @tesor_gp/api\" \"npm run dev -w @tesor_gp/worker-video-processor\" \"npm run dev -w @tesor_gp/ai\" \"npm run dev -w @tesor_gp/web\"",
     "dev:chain": "npm run node -w @tesor_gp/contracts",
@@ -23,7 +23,8 @@
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
     "setup:local": "node scripts/setup-local.mjs",
     "reconcile": "npm run reconcile -w @tesor_gp/api",
-    "test:e2e": "npm run build && npm run test:e2e -w @tesor_gp/e2e"
+    "test:e2e": "npm run build && npm run test:e2e -w @tesor_gp/e2e",
+    "setup:bucket": "npm run build -w @tesor_gp/storage && node scripts/setup-bucket.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

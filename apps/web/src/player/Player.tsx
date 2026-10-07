@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
-import Hls from 'hls.js';
+import Hls, { type LoadPolicy } from 'hls.js';
 import type { VideoDto } from '@tesor_gp/shared';
 import { formatDuration, priceLabel } from '../lib/format';
 import { CostMeter } from './CostMeter';
+import { MAX_NETWORK_RETRIES, MAX_URL_REFRESHES, describeFailure, isTransientStatus, networkRetryDelayMs, problemFromVideo, sendCredentials, type PlaybackProblem } from './errors';
 import { readNumber, writeValue } from './storage';
 import type { PlaybackSession } from './usePlaybackSession';
 
@@ -20,6 +21,17 @@ interface Props {
   blockedReason?: string | null;
 }
 
+/** hls.js's own retries, minus the pointless ones: a 404 or a refused signature fails at once so we can react. */
+function withoutPermanentRetries(policy: LoadPolicy): LoadPolicy {
+  const errorRetry = policy.default.errorRetry;
+  return {
+    default: {
+      ...policy.default,
+      errorRetry: errorRetry && { ...errorRetry, shouldRetry: (_cfg, _n, isTimeout, response, retry) => retry && (isTimeout || isTransientStatus(response?.code)) },
+    },
+  };
+}
+
 export function Player({ video, session, videoRef, onRequestUnlock, blockedReason }: Props): JSX.Element {
   const { state } = session;
   const containerRef = useRef<HTMLDivElement>(null);
@@ -34,53 +46,92 @@ export function Player({ video, session, videoRef, onRequestUnlock, blockedReaso
   const [paused, setPaused] = useState(true);
   const [time, setTime] = useState(0);
   const [duration, setDuration] = useState(video.durationSeconds);
-  const [mediaError, setMediaError] = useState<string | null>(null);
+  const [problem, setProblem] = useState<PlaybackProblem | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
-  // Attach the stream when a session starts.
+  // Attach the stream when a session starts (or the viewer presses Retry).
   useEffect(() => {
     const el = videoRef.current;
-    if (!el || !state.manifestUrl || !state.sessionId) return;
-    setMediaError(null);
+    const manifestUrl = state.manifestUrl;
+    if (!el || !manifestUrl || !state.sessionId) return;
+    setProblem(null);
     const start = (): void => {
       if (resumeAtRef.current > 0) el.currentTime = resumeAtRef.current;
       if (autoPlayRef.current) void el.play().catch(() => undefined);
     };
     if (Hls.isSupported()) {
-      const hls = new Hls({ xhrSetup: (xhr) => {
-          xhr.withCredentials = true;
-        }, enableWorker: true });
+      const hls = new Hls({
+        // The playback cookie goes to our own origin only; signed storage URLs are fetched without cookies.
+        xhrSetup: (xhr, url) => {
+          xhr.withCredentials = sendCredentials(url, window.location.origin);
+        },
+        enableWorker: true,
+        fragLoadPolicy: withoutPermanentRetries(Hls.DefaultConfig.fragLoadPolicy),
+        playlistLoadPolicy: withoutPermanentRetries(Hls.DefaultConfig.playlistLoadPolicy),
+        manifestLoadPolicy: withoutPermanentRetries(Hls.DefaultConfig.manifestLoadPolicy),
+      });
       hlsRef.current = hls;
+      let networkRetries = 0;
+      let urlRefreshes = 0;
+      let mediaRecoveries = 0;
+      let timer: ReturnType<typeof setTimeout> | undefined;
       hls.on(Hls.Events.MANIFEST_PARSED, (_e, data) => {
         setLevels(data.levels.map((l, index) => ({ index, label: l.height ? `${l.height}p` : `Level ${index + 1}` })));
         setLevel(-1);
         start();
       });
+      hls.on(Hls.Events.FRAG_LOADED, () => {
+        networkRetries = 0;
+      });
       hls.on(Hls.Events.ERROR, (_e, data) => {
         if (!data.fatal) return;
-        if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();
-        else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
-        else setMediaError('This video could not be played. Try reloading the page.');
+        const status = data.response?.code;
+        const playlist = /MANIFEST|LEVEL|TRACK/.test(data.details);
+        if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+          if ((status === 401 || status === 403) && !playlist && urlRefreshes < MAX_URL_REFRESHES) {
+            // Signed segment URLs ran out (usually after a long pause): fetch a fresh playlist and carry on.
+            urlRefreshes++;
+            resumeAtRef.current = el.currentTime;
+            autoPlayRef.current = !el.paused;
+            hls.loadSource(manifestUrl);
+            return;
+          }
+          if (isTransientStatus(status) && networkRetries < MAX_NETWORK_RETRIES) {
+            timer = setTimeout(() => hls.startLoad(), networkRetryDelayMs(networkRetries++));
+            return;
+          }
+        } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR && mediaRecoveries < 2) {
+          if (mediaRecoveries++ === 1) hls.swapAudioCodec();
+          hls.recoverMediaError();
+          return;
+        }
+        hls.stopLoad();
+        setProblem(describeFailure({ type: data.type, status, playlist }));
       });
-      hls.loadSource(state.manifestUrl);
+      hls.loadSource(manifestUrl);
       hls.attachMedia(el);
       return () => {
+        clearTimeout(timer);
         hls.destroy();
         hlsRef.current = null;
       };
     }
     if (el.canPlayType('application/vnd.apple.mpegurl')) {
-      el.src = state.manifestUrl;
+      el.src = manifestUrl;
       const onMeta = (): void => start();
+      const onError = (): void => setProblem(describeFailure({ type: el.error?.code === 4 ? 'otherError' : 'networkError', playlist: false }));
       el.addEventListener('loadedmetadata', onMeta, { once: true });
+      el.addEventListener('error', onError);
       return () => {
         el.removeEventListener('loadedmetadata', onMeta);
+        el.removeEventListener('error', onError);
         el.removeAttribute('src');
         el.load();
       };
     }
-    setMediaError('Your browser cannot play HLS video.');
+    setProblem({ kind: 'unsupported', message: 'Your browser cannot play HLS video.', retry: 'none' });
     return undefined;
-  }, [state.manifestUrl, state.sessionId, videoRef]);
+  }, [state.manifestUrl, state.sessionId, videoRef, reloadKey]);
 
   // Media element wiring: volume, time, duration.
   useEffect(() => {
@@ -189,6 +240,17 @@ export function Player({ video, session, videoRef, onRequestUnlock, blockedReaso
     }
   };
 
+  const retry = (): void => {
+    const el = videoRef.current;
+    const p = problem;
+    setProblem(null);
+    resumeAtRef.current = el?.currentTime ?? 0;
+    autoPlayRef.current = true;
+    if (p?.retry === 'new-session' || !sessionLive) void startSession(resumeAtRef.current);
+    else setReloadKey((k) => k + 1);
+  };
+
+  const notReady = problemFromVideo(video);
   const showStart = state.phase === 'idle' || state.phase === 'error';
   const showStopped = state.phase === 'stopped';
   const showEnded = state.phase === 'ended';
@@ -220,6 +282,10 @@ export function Player({ video, session, videoRef, onRequestUnlock, blockedReaso
           ) : null}
           {blockedReason ? (
             <p>{blockedReason}</p>
+          ) : notReady ? (
+            <p role="status" data-testid="not-ready">
+              {notReady.message}
+            </p>
           ) : (
             <>
               <button type="button" className="btn primary big" onClick={() => void startSession(state.resumePositionSec)} data-testid="start-playback">
@@ -261,9 +327,14 @@ export function Player({ video, session, videoRef, onRequestUnlock, blockedReaso
         </div>
       ) : null}
 
-      {mediaError ? (
-        <div className="player-overlay" role="alert">
-          {mediaError}
+      {problem ? (
+        <div className="player-overlay" role="alert" data-testid="playback-problem" data-kind={problem.kind}>
+          <p>{problem.message}</p>
+          {problem.retry !== 'none' ? (
+            <button type="button" className="btn primary" onClick={retry}>
+              Retry
+            </button>
+          ) : null}
         </div>
       ) : null}
 

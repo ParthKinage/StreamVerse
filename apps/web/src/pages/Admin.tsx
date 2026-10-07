@@ -4,9 +4,10 @@ import { errorMessage } from '../api/client';
 import { adminApi } from '../api/endpoints';
 import { EmptyState, ErrorState, Skeleton } from '../components/States';
 import { useToast } from '../components/Toasts';
-import { money, moneyTitle, shortAddress, timeAgo } from '../lib/format';
+import { useConfig } from '../api/queries';
+import { money, moneyTitle, shortAddress, strm, timeAgo } from '../lib/format';
 
-type Tab = 'health' | 'settlements' | 'videos' | 'users';
+type Tab = 'revenue' | 'health' | 'settlements' | 'videos' | 'users';
 
 function Health(): JSX.Element {
   const q = useQuery({ queryKey: ['admin', 'health'], queryFn: adminApi.health, refetchInterval: 10_000 });
@@ -26,6 +27,89 @@ function Health(): JSX.Element {
         ))}
       </ul>
       {h.details ? <pre className="code">{JSON.stringify(h.details, null, 2)}</pre> : null}
+    </div>
+  );
+}
+
+function Figure({ label, value, title, strong = false, testId }: { label: string; value: string; title?: string; strong?: boolean; testId?: string }): JSX.Element {
+  return (
+    <div className={`stat ${strong ? 'strong' : ''}`}>
+      <p className="muted small">{label}</p>
+      <p className="stat-value" title={title} data-testid={testId}>
+        {value}
+      </p>
+    </div>
+  );
+}
+
+/** What the platform earns from its commission, and whether the wallet that pays the network fees needs topping up. */
+function Revenue(): JSX.Element {
+  const { data: config } = useConfig();
+  const q = useQuery({ queryKey: ['admin', 'revenue'], queryFn: adminApi.revenue, refetchInterval: 15_000 });
+  if (q.isPending) return <Skeleton className="block" />;
+  if (q.isError) return <ErrorState message={errorMessage(q.error)} onRetry={() => void q.refetch()} />;
+  const r = q.data;
+  const gasCoin = config?.chainId === 80002 || config?.chainId === 137 ? 'POL' : 'ETH';
+  const onChain = r.paymentsMode === 'chain';
+  return (
+    <div>
+      <section className="card" aria-label="Earnings">
+        <h2>Platform earnings</h2>
+        <p className="muted small">
+          StreamVerse keeps <strong data-testid="revenue-commission">{r.feeBps / 100}%</strong> of every video sale. The rest goes to the creator.
+        </p>
+        <div className="stats">
+          <Figure label="Commission earned" value={money(r.platformFeesWei)} title={moneyTitle(r.platformFeesWei)} strong testId="revenue-fees" />
+          <Figure label="Video sales" value={money(r.grossSalesWei)} title={moneyTitle(r.grossSalesWei)} testId="revenue-sales" />
+          <Figure label="Paid to creators" value={money(r.creatorEarningsWei)} title={moneyTitle(r.creatorEarningsWei)} />
+          {onChain ? <Figure label="Ready to withdraw" value={r.platformFeesOnChainWei === null ? 'Unavailable' : money(r.platformFeesOnChainWei)} /> : null}
+        </div>
+        {onChain ? <p className="muted small">The commission is held by the payment contract. Its admin withdraws it to the treasury with the platform:withdraw-fees command.</p> : null}
+      </section>
+
+      {r.walletMode === 'managed' ? (
+        <section className="card" aria-label="Wallets and coins">
+          <h2>Coins and wallets</h2>
+          <div className="stats">
+            <Figure label="Coins sold" value={money(r.coinsSoldWei)} title={moneyTitle(r.coinsSoldWei)} testId="revenue-coins-sold" />
+            <Figure label="Bonuses given" value={money(r.bonusesWei)} title={moneyTitle(r.bonusesWei)} />
+            <Figure label="Built-in wallets" value={String(r.walletCount)} />
+            <Figure label="Coins left to sell" value={r.relayerCoinsWei === null ? 'Unavailable' : money(r.relayerCoinsWei)} />
+          </div>
+        </section>
+      ) : null}
+
+      {onChain ? (
+        <section className="card" aria-label="Platform wallet">
+          <h2>Platform wallet</h2>
+          <p className="muted small">This wallet pays the blockchain fees for everyone. Keep it topped up with {gasCoin}.</p>
+          <div className="stats">
+            <Figure label={`Gas balance (${gasCoin})`} value={r.relayerGasWei === null ? 'Unavailable' : strm(r.relayerGasWei)} strong testId="revenue-gas" />
+            <Figure label="Purchases waiting" value={String(r.pendingCredits)} />
+            <Figure label="Payments waiting" value={String(r.pendingSettlements)} />
+          </div>
+          {r.lowGas ? (
+            <p className="notice" role="alert" data-testid="revenue-low-gas">
+              The platform wallet is nearly out of gas. Send {gasCoin} to <code>{r.relayerAddress}</code> or purchases and payouts will stop being confirmed.
+            </p>
+          ) : null}
+          {r.relayerAddress ? (
+            <p className="muted small">
+              Address: <code className="address">{r.relayerAddress}</code>
+              {config?.explorerUrl ? (
+                <>
+                  {' '}
+                  <a href={`${config.explorerUrl}/address/${r.relayerAddress}`} target="_blank" rel="noreferrer noopener">
+                    View on explorer
+                  </a>
+                </>
+              ) : null}
+            </p>
+          ) : (
+            <p className="notice">No platform wallet is configured, so nothing can be written to the blockchain.</p>
+          )}
+        </section>
+      ) : null}
     </div>
   );
 }
@@ -226,8 +310,9 @@ function Users(): JSX.Element {
 }
 
 export default function Admin(): JSX.Element {
-  const [tab, setTab] = useState<Tab>('health');
+  const [tab, setTab] = useState<Tab>('revenue');
   const tabs: Array<[Tab, string]> = [
+    ['revenue', 'Revenue'],
     ['health', 'Health'],
     ['settlements', 'Settlements'],
     ['videos', 'Videos'],
@@ -243,6 +328,7 @@ export default function Admin(): JSX.Element {
           </button>
         ))}
       </div>
+      {tab === 'revenue' ? <Revenue /> : null}
       {tab === 'health' ? <Health /> : null}
       {tab === 'settlements' ? <Settlements /> : null}
       {tab === 'videos' ? <Videos /> : null}

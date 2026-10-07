@@ -77,6 +77,9 @@ export const ERROR_CODES = [
   'UNKNOWN_BANK_ACCOUNT',
   'PURCHASE_REQUIRED',
   'ACCESS_EXPIRED',
+  'DAILY_LIMIT_REACHED',
+  'MEDIA_MISSING',
+  'UPLOAD_NOT_FOUND',
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];
 

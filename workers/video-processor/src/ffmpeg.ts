@@ -92,9 +92,12 @@ export async function probe(ffprobePath: string, file: string, signal?: AbortSig
   };
 }
 
-/** Runs FFmpeg, reporting the encoded position in seconds (from `-progress pipe:1`) as it advances. */
-export async function runFfmpeg(ffmpegPath: string, args: string[], onTime?: (seconds: number) => void, signal?: AbortSignal): Promise<void> {
-  const res = await run(ffmpegPath, ['-y', '-hide_banner', '-loglevel', 'error', '-nostdin', '-nostats', '-progress', 'pipe:1', ...args], {
+/**
+ * Runs FFmpeg, reporting the encoded position in seconds (from `-progress pipe:1`) as it advances. Resolves to the
+ * peak resident memory in KiB that `-benchmark` reports (it prints only at the `info` log level), or undefined.
+ */
+export async function runFfmpeg(ffmpegPath: string, args: string[], onTime?: (seconds: number) => void, signal?: AbortSignal): Promise<number | undefined> {
+  const res = await run(ffmpegPath, ['-y', '-hide_banner', '-loglevel', 'info', '-benchmark', '-nostdin', '-nostats', '-progress', 'pipe:1', ...args], {
     signal,
     onStdoutLine: (line) => {
       const m = /^out_time_us=(\d+)$/.exec(line) ?? /^out_time_ms=(\d+)$/.exec(line);
@@ -106,4 +109,6 @@ export async function runFfmpeg(ffmpegPath: string, args: string[], onTime?: (se
     const corrupt = /Invalid data|moov atom|could not find codec|Error while decoding|Invalid argument/i.test(res.stderr);
     throw new MediaError(corrupt ? 'The video could not be decoded; the file may be corrupt' : `Transcoding failed: ${detail || `ffmpeg exited with code ${res.code}`}`, corrupt);
   }
+  const rss = /maxrss=(\d+)\s*Ki?B/.exec(res.stderr);
+  return rss ? Number(rss[1]) : undefined;
 }
