@@ -64,6 +64,8 @@ const schema = z
     /** Gas balance (in thousandths of the native coin) below which the admin page warns that the platform wallet is low. */
     /** Warn below this many thousandths of the native coin (150 = 0.15): roughly what a full batch must hold up front. */
     LOW_GAS_MILLI: num(150),
+    /** Largest block range per eth_getLogs request; the indexer steps down automatically when the RPC refuses it. */
+    INDEXER_MAX_BLOCK_RANGE: z.coerce.number().int().min(1).max(100_000).default(2000),
     /**
      * When the app is pointed at a different ledger (bank to chain, or a newly deployed contract), balances and
      * payments recorded for the old one no longer mean anything. true = clear them automatically at startup.

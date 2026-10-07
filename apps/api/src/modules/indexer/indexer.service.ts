@@ -1,13 +1,54 @@
 import { DOMAIN_EVENTS } from '@tesor_gp/shared';
 import type { Prisma } from '@tesor_gp/database';
-import type { ParsedChainLog } from '@tesor_gp/blockchain';
+import type { ChainAdapter, ParsedChainLog } from '@tesor_gp/blockchain';
 import type { AppContext } from '../../context';
 import { fromWei, toWei } from '../common';
 import { markSettlementSettled } from '../settlement';
 import { EMPTY_ESCROW, ESCROW_EVENTS, foldEscrow, type EscrowState } from './escrow-fold';
 
-const MAX_RANGE = 2000;
 const ADVISORY_LOCK_KEY = 7_340_001;
+
+/**
+ * Block ranges tried for eth_getLogs, largest first. Free RPC plans cap the range (Alchemy's free plan: 10 blocks), so
+ * the indexer steps down until the RPC accepts a request, remembers that size, and steps back up after a run of
+ * successes so a passing outage does not leave it crawling.
+ */
+export const RANGE_STEPS = [2000, 1000, 500, 100, 50, 10, 5, 1];
+const GROW_AFTER_SUCCESSES = 50;
+const rangeState = new WeakMap<AppContext, { range: number; successes: number; warned: boolean }>();
+
+function stepsUpTo(max: number): number[] {
+  const steps = RANGE_STEPS.filter((s) => s <= max);
+  return steps.length && steps[0] === max ? steps : [max, ...steps];
+}
+
+/** Fetches logs from `from`, using the largest range the RPC accepts. Returns the logs and the last block covered. */
+async function fetchLogs(ctx: AppContext, chain: ChainAdapter, from: number, safe: number): Promise<{ logs: ParsedChainLog[]; to: number }> {
+  const steps = stepsUpTo(ctx.env.INDEXER_MAX_BLOCK_RANGE);
+  const state = rangeState.get(ctx) ?? { range: steps[0] as number, successes: 0, warned: false };
+  rangeState.set(ctx, state);
+  if (state.successes >= GROW_AFTER_SUCCESSES && state.range < (steps[0] as number)) {
+    state.range = steps[Math.max(0, steps.indexOf(state.range) - 1)] as number;
+    state.successes = 0;
+  }
+  for (;;) {
+    const to = Math.min(safe, from + state.range - 1);
+    try {
+      const logs = await chain.getLogs(from, to);
+      state.successes += 1;
+      return { logs, to };
+    } catch (err) {
+      const smaller = steps.find((s) => s < state.range);
+      if (smaller === undefined) throw err;
+      if (!state.warned) {
+        ctx.logger.warn({ from: state.range, to: smaller, err: (err as Error).message }, 'RPC refused the log range; using smaller ranges');
+        state.warned = true;
+      }
+      state.range = smaller;
+      state.successes = 0;
+    }
+  }
+}
 
 type Tx = Prisma.TransactionClient;
 
@@ -73,10 +114,10 @@ async function ingestLog(ctx: AppContext, tx: Tx, log: ParsedChainLog): Promise<
   return true;
 }
 
-export async function indexOnce(ctx: AppContext): Promise<{ processed: number; cursor: number }> {
+export async function indexOnce(ctx: AppContext): Promise<{ processed: number; cursor: number; behind: boolean }> {
   const chain = ctx.chain;
   const deployment = ctx.deployment;
-  if (!chain || !deployment) return { processed: 0, cursor: 0 };
+  if (!chain || !deployment) return { processed: 0, cursor: 0, behind: false };
 
   const contract = deployment.paymentRouter.toLowerCase();
   const key = { chainId_contract: { chainId: ctx.env.CHAIN_ID, contract } };
@@ -85,11 +126,9 @@ export async function indexOnce(ctx: AppContext): Promise<{ processed: number; c
 
   const head = await chain.getBlockNumber();
   const safe = head - ctx.env.CONFIRMATIONS + 1;
-  if (safe <= last) return { processed: 0, cursor: last };
+  if (safe <= last) return { processed: 0, cursor: last, behind: false };
   const from = last + 1;
-  const to = Math.min(safe, from + MAX_RANGE - 1);
-
-  const logs = await chain.getLogs(from, to);
+  const { logs, to } = await fetchLogs(ctx, chain, from, safe);
   let processed = 0;
   await ctx.prisma.$transaction(
     async (tx) => {
@@ -103,16 +142,15 @@ export async function indexOnce(ctx: AppContext): Promise<{ processed: number; c
     },
     { timeout: 30_000 },
   );
-  return { processed, cursor: to };
+  return { processed, cursor: to, behind: to < safe };
 }
 
 /** Catches up until the cursor reaches the safe head (used at startup and in tests). */
 export async function indexUntilCaughtUp(ctx: AppContext): Promise<void> {
   if (!ctx.chain) return;
-  for (let i = 0; i < 1000; i++) {
-    const safe = (await ctx.chain.getBlockNumber()) - ctx.env.CONFIRMATIONS + 1;
-    const { cursor } = await indexOnce(ctx);
-    if (cursor >= safe) return;
+  for (let i = 0; i < 100_000; i++) {
+    const { behind } = await indexOnce(ctx);
+    if (!behind) return;
   }
 }
 
@@ -139,6 +177,8 @@ export interface IndexerHandle {
 }
 
 /** Polling loop. RPC failures are logged and retried with backoff; playback continues on the last known balance. */
+const CATCH_UP_BUDGET_MS = 10_000;
+
 export function startIndexer(ctx: AppContext, intervalMs = 2000): IndexerHandle {
   let stopped = false;
   let failures = 0;
@@ -148,7 +188,15 @@ export function startIndexer(ctx: AppContext, intervalMs = 2000): IndexerHandle 
   const tick = async (): Promise<void> => {
     if (stopped) return;
     try {
-      const { processed } = await indexOnce(ctx);
+      // While behind (after a restart, or with an RPC that only allows small ranges) keep reading for up to
+      // CATCH_UP_BUDGET_MS instead of one range per tick, so balances catch up in minutes, not hours.
+      const started = Date.now();
+      let processed = 0;
+      let result: Awaited<ReturnType<typeof indexOnce>>;
+      do {
+        result = await indexOnce(ctx);
+        processed += result.processed;
+      } while (result.behind && !stopped && Date.now() - started < CATCH_UP_BUDGET_MS);
       if (processed > 0) ctx.logger.debug({ processed }, 'indexed chain events');
       failures = 0;
     } catch (err) {
