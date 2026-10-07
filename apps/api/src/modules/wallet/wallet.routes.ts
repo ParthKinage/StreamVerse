@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { publicWhenAnonymous } from '../../middleware/http-cache';
 import { cursorQuery, linkWalletRequest, nonceRequest } from '@tesor_gp/shared';
 import type { AppContext } from '../../context';
 import { requireAuth, userId } from '../../middleware/auth';
@@ -11,7 +12,7 @@ export function walletRoutes(ctx: AppContext): Router {
   const auth = requireAuth(ctx);
   const limiter = createRateLimiter(ctx, { name: 'wallet', max: 30, keyByUser: false });
 
-  router.get('/config', (_req, res) => {
+  router.get('/config', publicWhenAnonymous(60), (_req, res) => {
     res.json(service.getConfig(ctx));
   });
 

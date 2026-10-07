@@ -121,7 +121,8 @@ const schema = z
     HEARTBEAT_INTERVAL_SEC: num(10),
     PLAYBACK_TOKEN_TTL_SEC: num(30),
     SESSION_TIMEOUT_SEC: num(45),
-    AI_SERVICE_URL: z.string().url().default('http://localhost:5000'),
+    /** Recommendation service. When unset, recommendations use the trending fallback at once (no network call). */
+    AI_SERVICE_URL: z.string().url().optional(),
     AI_TIMEOUT_MS: num(800),
     AI_FALLBACK_MODE: z.string().default('trending'),
     RATE_LIMIT_MAX: num(300),

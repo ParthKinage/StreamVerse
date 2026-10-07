@@ -1,6 +1,8 @@
 import { DOMAIN_EVENTS } from '@tesor_gp/shared';
 import type { AppContext } from '../../context';
 
+const RECENT_MS = 10 * 60_000;
+
 export const MEDIA_MISSING_REASON = 'The video files are no longer in storage. Upload the video again.';
 
 /**
@@ -14,7 +16,9 @@ export async function reconcileMissingMedia(ctx: AppContext, batchSize = 200): P
   let cursor: string | undefined;
   for (;;) {
     const rows = await ctx.prisma.video.findMany({
-      where: { processingStatus: 'COMPLETED', archivedAt: null, ...(cursor ? { id: { gt: cursor } } : {}) },
+      // Rows changed in the last few minutes may still be getting their files (for example the seed uploading demo
+      // media after a restart), so they are checked next time.
+      where: { processingStatus: 'COMPLETED', archivedAt: null, updatedAt: { lt: new Date(ctx.now().getTime() - RECENT_MS) }, ...(cursor ? { id: { gt: cursor } } : {}) },
       select: { id: true, hlsManifestPath: true },
       orderBy: { id: 'asc' },
       take: batchSize,

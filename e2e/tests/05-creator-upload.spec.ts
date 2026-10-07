@@ -21,7 +21,7 @@ test('a creator uploads, publishes and the video plays', async ({ page, platform
   await page.getByRole('tab', { name: 'Upload' }).click();
   await page.getByLabel('Video file').setInputFiles(clip);
   await page.getByLabel('Title').fill(title);
-  await page.getByLabel('Price (STRM)').fill('3');
+  await page.getByLabel('Rate per minute (STRM)').fill('3');
   await page.getByRole('button', { name: 'Upload', exact: true }).click();
 
   const row = page.getByTestId('studio-row').filter({ hasText: title });

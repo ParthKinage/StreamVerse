@@ -208,6 +208,32 @@ The viewer pays only for the seconds of a video they actually watch. Rewatching 
 | D-OLD-UNLOCKS | **Switched everyone now** (owner decision): active 48-hour unlocks no longer give access; `POST /videos/:id/purchase` returns `410`. Past purchases stay in the history. | owner decision |
 | D-SEGMENT-BUDGET-2 | The per-segment watch-time budget is removed: fetching ahead now costs the viewer money, so it no longer needs limiting. This also closes the D-SEGMENT-BUDGET trade-off above. | implementation choice |
 
+## Speed (TESOR_LIVE_BUILD_SPEC Part D)
+
+**Baseline, 2026-10-07**, measured from India through the hosted web origin, warm, 20 requests each (p50 / p95):
+`/config` 690 / 1216 ms, `/videos` 914 / 1116 ms, `/videos?sort=trending` 995 / 1252 ms, `/categories` 705 / 777 ms,
+`/recommendations` 1228 / 1665 ms. Cold start after 15 minutes idle: 73 s and 83 s (two observations).
+`/wallet/summary` needs a signed-in user and was not measured from here.
+
+**Where the time goes:** a request to the API's bare `/health` (no database, no Redis) takes about 300 ms after the
+TLS handshake, which is the round trip from India to the US region the API runs in; the Vercel hop adds about 10 ms.
+Database and Redis work adds about 200 ms on top for catalog routes (Neon is in `us-east-2`; the Render region was
+not visible from here). So most of the delay is distance plus sequential round trips, not CPU.
+
+| # | Decision | Status |
+|---|---|---|
+| D-EDGE-CACHE | Anonymous catalog responses (`/videos`, `/categories`, `/config`, `/creators/:id`) carry `Cache-Control: public, max-age=0, s-maxage=30..60, stale-while-revalidate=300` and `Vary: Authorization`; `vercel.json` enables caching of those rewrites (`x-vercel-enable-rewrite-caching: 1`, per Vercel's rewrite docs). The web app requests lists and categories without the login header. A request with an Authorization header is never marked cacheable, and every other API response is `private, no-store`. Lists do not carry per-viewer flags any more (the cards never used them); the video detail page still asks with the login header. | implementation choice |
+| D-GLOBAL-LIMIT | The global per-IP limit counts in memory (one API instance); Redis-backed limits stay on sign-in, payments, coins, uploads and watching. Saves a Redis round trip on every request. With several instances the global limit becomes per instance. | implementation choice |
+| D-COMPRESSION | `compression` on the API router only (JSON above 1 KB); playback and media are mounted outside it and never compressed. | implementation choice |
+| D-SERVER-TIMING | Every response carries `Server-Timing: app;dur=<ms>` (time inside the API), alongside the existing per-request log line (method, URL, status, response time, request id). | implementation choice |
+| D-MEMO | Categories are computed at most every 30 s per instance. | implementation choice |
+| D-AI-SKIP | `AI_SERVICE_URL` has no default any more; when it is unset (the hosted image does not run the AI service) recommendations use the trending fallback without any network call. Set it explicitly where the AI service runs (`.env.example` keeps `http://localhost:5000`). | implementation choice |
+| D-POLLING | The wallet summary is polled (every 5 s) only while coins are arriving or charges wait to settle; transactions only while one is pending; creator earnings only while a payout is on its way. Otherwise the web app refreshes on focus and after actions. | implementation choice |
+| D-RECONCILE-RECENT | The missing-media check skips videos changed in the last 10 minutes, so demo media being uploaded by the seed after a restart is no longer marked FAILED for a moment. | implementation choice |
+| D-COLD-START | Render's free plan sleeps after 15 minutes idle; the first visitor then waits 70-80 s. **The owner keeps the free plan (2026-10-07)** and accepts that wait. No keep-alive ping is used (the spec forbids hiding the cold start without the owner's agreement). Everything after the first request benefits from the other changes in this section. | owner decision |
+| D-REGION | **Owner decision needed.** Users are in India; the API and database are in the US. Moving the API, Neon and Upstash to one region near the users (for example Singapore) would remove most of the 300 ms per request. Render cannot move an existing service between regions; it means a new service, and Neon a new project or region. | open question |
+| D-PRECONNECT | Not added: the media host is only known from the signed redirect, and API calls are same-origin through Vercel, so a static preconnect would need another build setting for little gain. | implementation choice |
+
 ## Limitations and unverified items (UNKNOWN)
 
 | Item | Why it could not be completed in the build environment |

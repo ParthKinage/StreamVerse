@@ -78,7 +78,8 @@ export interface VideoListParams {
   limit?: number;
 }
 export const catalogApi = {
-  list: (p: VideoListParams = {}) => api<Page<VideoDto>>('/videos', { query: { ...p } }),
+  // Sent without the login header: lists are the same for everyone, so Vercel's edge can cache them.
+  list: (p: VideoListParams = {}) => api<Page<VideoDto>>('/videos', { query: { ...p }, anonymous: true }),
   get: (id: string) => api<VideoDto>(`/videos/${encodeURIComponent(id)}`),
   categories: () => api<{ categories: Array<{ name: string; count: number }> }>('/categories', { anonymous: true }),
   creator: (id: string) => api<CreatorProfileDto>(`/creators/${encodeURIComponent(id)}`),

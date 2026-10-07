@@ -1,7 +1,54 @@
 {
   "rewrites": [
-    { "source": "/api/:path*", "destination": "https://streamverse-k1se.onrender.com/api/:path*" },
-    { "source": "/playback/:path*", "destination": "https://streamverse-k1se.onrender.com/playback/:path*" },
-    { "source": "/((?!api|playback).*)", "destination": "/index.html" }
+    {
+      "source": "/api/:path*",
+      "destination": "https://streamverse-k1se.onrender.com/api/:path*"
+    },
+    {
+      "source": "/playback/:path*",
+      "destination": "https://streamverse-k1se.onrender.com/playback/:path*"
+    },
+    {
+      "source": "/((?!api|playback).*)",
+      "destination": "/index.html"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/api/v1/videos",
+      "headers": [
+        {
+          "key": "x-vercel-enable-rewrite-caching",
+          "value": "1"
+        }
+      ]
+    },
+    {
+      "source": "/api/v1/categories",
+      "headers": [
+        {
+          "key": "x-vercel-enable-rewrite-caching",
+          "value": "1"
+        }
+      ]
+    },
+    {
+      "source": "/api/v1/config",
+      "headers": [
+        {
+          "key": "x-vercel-enable-rewrite-caching",
+          "value": "1"
+        }
+      ]
+    },
+    {
+      "source": "/api/v1/creators/:id",
+      "headers": [
+        {
+          "key": "x-vercel-enable-rewrite-caching",
+          "value": "1"
+        }
+      ]
+    }
   ]
 }
