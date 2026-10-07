@@ -1,4 +1,4 @@
-/* Prepares the object-storage bucket named in .env (STORAGE_PROVIDER=s3) so browsers can upload to and play from it.
+/* Prepares the object-storage bucket named by the S3_* settings in .env so browsers can upload to and play from it.
  * Usage:  npm run setup:bucket                      (allows the hosted site and http://localhost:3000)
  *         npm run setup:bucket -- https://other.app (allows exactly the origins given)
  * Needs `npm run build -w @tesor_gp/storage` first. It prints the bucket name, never the keys. */
@@ -13,11 +13,14 @@ const dotenv = require('dotenv');
 const { S3Store, s3SettingsFromEnv } = require('@tesor_gp/storage');
 
 dotenv.config({ path: path.join(root, '.env') });
-if (process.env.STORAGE_PROVIDER !== 's3') {
-  console.error('STORAGE_PROVIDER is not "s3" in .env; nothing to do.');
+// Only the S3_* settings are needed, so the bucket can be prepared while local development still uses local storage.
+let settings;
+try {
+  settings = s3SettingsFromEnv();
+} catch (err) {
+  console.error(`${err.message.replace('STORAGE_PROVIDER=s3 needs', 'Add to .env:')} (see .env.example)`);
   process.exit(1);
 }
-const settings = s3SettingsFromEnv();
 const origins = process.argv.slice(2).length ? process.argv.slice(2) : ['https://stream-verse-opal.vercel.app', 'http://localhost:3000'];
 const store = new S3Store(settings);
 
