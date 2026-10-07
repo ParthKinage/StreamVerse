@@ -41,6 +41,12 @@ jobs:
       - name: Install FFmpeg
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - run: npm ci
+      # Local S3-compatible storage for the storage tests (same image and dev-only keys as docker-compose.yml).
+      - name: Start S3 test server
+        run: |
+          docker run -d --name s3 -p 7070:7070 -e ROOT_ACCESS_KEY_ID=devaccesskey -e ROOT_SECRET_ACCESS_KEY=devsecretkey \
+            --tmpfs /data versity/versitygw:v1.8.0 --port :7070 posix /data
+          for i in $(seq 1 30); do curl -s -o /dev/null http://localhost:7070 && exit 0; sleep 1; done; docker logs s3; exit 1
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
