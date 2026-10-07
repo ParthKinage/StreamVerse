@@ -24,20 +24,32 @@ try {
 const origins = process.argv.slice(2).length ? process.argv.slice(2) : ['https://stream-verse-opal.vercel.app', 'http://localhost:3000'];
 const store = new S3Store(settings);
 
+const HINTS = {
+  'write a test file': 'check S3_BUCKET is the exact bucket name and the key is allowed to write to that bucket',
+  'set browser access (CORS)': 'the key can use the bucket but may not change its settings; the CORS rules need a key that is allowed to change bucket settings',
+};
+let step = 'write a test file';
 try {
   if (/localhost|127\.0\.0\.1/.test(settings.endpoint)) await store.ensureBucket();
-  await store.setCors(origins);
   // A round trip proves the keys can write, read and delete.
   const probe = `healthcheck/${Date.now()}.txt`;
   const tmp = path.join(root, '.bucket-check.tmp');
   fs.writeFileSync(tmp, 'ok');
-  await store.putFile(probe, tmp, { contentType: 'text/plain' });
-  fs.rmSync(tmp, { force: true });
+  try {
+    await store.putFile(probe, tmp, { contentType: 'text/plain' });
+  } finally {
+    fs.rmSync(tmp, { force: true });
+  }
+  step = 'read the test file back';
   const back = await store.getText(probe);
+  step = 'delete the test file';
   await store.deleteKey(probe);
   if (back !== 'ok') throw new Error('wrote a test file but could not read it back');
+  step = 'set browser access (CORS)';
+  await store.setCors(origins);
   console.log(`Bucket "${settings.bucket}" is ready. Browser access allowed from: ${origins.join(', ')}`);
 } catch (err) {
-  console.error(`Bucket setup failed: ${err?.name ?? ''} ${err?.message ?? err}`);
+  console.error(`Bucket setup failed at "${step}" on bucket "${settings.bucket}": ${err?.name ?? ''} ${err?.message ?? err}`);
+  if (HINTS[step]) console.error(`Hint: ${HINTS[step]}`);
   process.exit(1);
 }
