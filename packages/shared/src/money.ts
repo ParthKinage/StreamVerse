@@ -37,6 +37,13 @@ export function costForSeconds(seconds: number | bigint, ratePerMinuteWei: bigin
   return (s * ratePerMinuteWei) / 60n;
 }
 
+/** Cost of `ms` milliseconds of video at `ratePerMinuteWei`, floored to whole wei (pieces of video are not whole seconds). */
+export function costForMs(ms: number | bigint, ratePerMinuteWei: bigint): bigint {
+  const m = typeof ms === 'bigint' ? ms : BigInt(Math.max(0, Math.round(ms)));
+  if (m < 0n || ratePerMinuteWei < 0n) throw new RangeError('duration and rate must be non-negative');
+  return (m * ratePerMinuteWei) / 60_000n;
+}
+
 export interface FeeSplit {
   fee: bigint;
   creator: bigint;

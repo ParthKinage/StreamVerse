@@ -1,7 +1,7 @@
 import { Contract, parseEther } from 'ethers';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { STREAM_COIN_ABI } from '@tesor_gp/blockchain';
-import { authed, createHarness, registerUser, resetDb, seedVideo, type Harness, type TestUser } from '../../../test/harness';
+import { authed, createHarness, registerUser, resetDb, seedVideo, type Harness, type TestUser, watchPieces } from '../../../test/harness';
 import { DEV_WALLET_SEED } from '../../../config/env';
 import { indexUntilCaughtUp } from '../../indexer';
 import { processSettlements } from '../../settlement';
@@ -41,7 +41,16 @@ interface Summary {
 }
 const summary = async (u: TestUser): Promise<Summary> => (await api(u).get('/api/v1/wallet/summary')).body as Summary;
 const buy = (u: TestUser, amount: string, accountId = 'demo-savings') => api(u).post('/api/v1/wallet/topup').send({ accountId, amountWei: strm(amount) });
-const unlock = (u: TestUser, videoId: string) => api(u).post(`/api/v1/videos/${videoId}/purchase`).send({});
+/**
+ * Watches the whole 24 s fixture (every 4-second piece) and ends the session, so the viewer pays the full-watch cost.
+ * Returns 200 with the viewer's summary when every piece was paid, otherwise the refusal.
+ */
+async function unlock(u: TestUser, videoId: string): Promise<{ status: number; body: Record<string, unknown> }> {
+  const r = await watchPieces(h, u, videoId, [0, 1, 2, 3, 4, 5]);
+  if (r.start.status !== 201) return { status: r.start.status, body: r.start.body };
+  await api(u).post(`/api/v1/watch/sessions/${r.sid}/end`).send({});
+  return { status: r.statuses.every((st) => st === 200) ? 200 : 402, body: (await summary(u)) as unknown as Record<string, unknown> };
+}
 const transactions = async (u: TestUser) =>
   (await api(u).get('/api/v1/wallet/transactions')).body.items as Array<{ type: string; status: string; label: string; amountWei: string; explorerUrl: string | null; txHash: string | null }>;
 
@@ -53,8 +62,9 @@ async function settleAll(): Promise<void> {
   await indexUntilCaughtUp(h.ctx);
 }
 
-async function creatorWithVideo(priceStrm: string) {
-  const video = await seedVideo(h, { priceStrm, linkCreatorWallet: false });
+/** A creator with a video whose full 24 s watch costs `fullWatchStrm` (rate = that x 2.5 per minute). */
+async function creatorWithVideo(fullWatchStrm: string) {
+  const video = await seedVideo(h, { rateStrm: String(Number(fullWatchStrm) * 2.5), linkCreatorWallet: false });
   const login = await h.req().post('/api/v1/auth/login').send({ email: video.creatorUser.email, password: video.creatorUser.password });
   const creator: TestUser = { ...video.creatorUser, token: login.body.accessToken as string };
   const address = (await h.ctx.prisma.user.findUniqueOrThrow({ where: { id: creator.id } })).walletAddress as string;
@@ -265,26 +275,26 @@ describe('buying coins', () => {
 
 describe('paying for a video', () => {
   it('moves coins from the viewer to the creator and the platform on-chain, then pays the creator out', async () => {
-    const { video, creator, address } = await creatorWithVideo('10');
+    const { video, creator, address } = await creatorWithVideo('12');
     const viewer = await registerUser(h);
     await settleAll();
 
     const res = await unlock(viewer, video.id);
     expect(res.status).toBe(200);
-    expect(res.body.availableWei).toBe(strm('40'));
+    expect(res.body.availableWei).toBe(strm('38'));
     const feesBefore = await h.ctx.chain!.getPlatformEarnings();
     await settleAll();
 
-    // Commission on the test chain is 10%: the viewer pays 10, the creator gets 9, the platform keeps 1.
-    expect((await summary(viewer)).escrowWei).toBe(strm('40'));
-    expect(await h.ctx.chain!.getCreatorEarnings(address)).toBe(parseEther('9'));
-    expect((await h.ctx.chain!.getPlatformEarnings()) - feesBefore).toBe(parseEther('1'));
+    // Commission on the test chain is 10%: the viewer pays 12, the creator gets 10.8, the platform keeps 1.2.
+    expect((await summary(viewer)).escrowWei).toBe(strm('38'));
+    expect(await h.ctx.chain!.getCreatorEarnings(address)).toBe(parseEther('10.8'));
+    expect((await h.ctx.chain!.getPlatformEarnings()) - feesBefore).toBe(parseEther('1.2'));
     const earnings = (await api(creator).get('/api/v1/creator/earnings')).body;
-    expect(earnings).toMatchObject({ claimableWei: strm('9'), lifetimeEarnedWei: strm('9'), paidOutWei: '0', payoutPending: false });
+    expect(earnings).toMatchObject({ claimableWei: strm('10.8'), lifetimeEarnedWei: strm('10.8'), paidOutWei: '0', payoutPending: false });
 
     const payout = await api(creator).post('/api/v1/creator/earnings/payout');
     expect(payout.status).toBe(202);
-    expect(payout.body.amountWei).toBe(strm('9'));
+    expect(payout.body.amountWei).toBe(strm('10.8'));
     expect((await api(creator).get('/api/v1/creator/earnings')).body.payoutPending).toBe(true);
     // A second click while the payout is on its way does not queue another transaction.
     expect((await api(creator).post('/api/v1/creator/earnings/payout')).status).toBe(202);
@@ -294,14 +304,14 @@ describe('paying for a video', () => {
     await processPayout(h.ctx, { userId: creator.id, address });
     await indexUntilCaughtUp(h.ctx);
     const token = new Contract(h.ctx.deployment!.streamCoin, STREAM_COIN_ABI, h.provider);
-    expect(await token.getFunction('balanceOf')(address)).toBe(parseEther('9'));
+    expect(await token.getFunction('balanceOf')(address)).toBe(parseEther('10.8'));
     expect(await h.provider.getBalance(address)).toBe(0n); // the creator never needed gas
-    expect((await api(creator).get('/api/v1/creator/earnings')).body).toMatchObject({ claimableWei: '0', paidOutWei: strm('9'), lifetimeEarnedWei: strm('9') });
-    expect((await transactions(creator)).find((t) => t.type === 'EARNINGS_CLAIMED')).toMatchObject({ label: 'Earnings paid to your wallet', amountWei: strm('9'), status: 'CONFIRMED' });
+    expect((await api(creator).get('/api/v1/creator/earnings')).body).toMatchObject({ claimableWei: '0', paidOutWei: strm('10.8'), lifetimeEarnedWei: strm('10.8') });
+    expect((await transactions(creator)).find((t) => t.type === 'EARNINGS_CLAIMED')).toMatchObject({ label: 'Earnings paid to your wallet', amountWei: strm('10.8'), status: 'CONFIRMED' });
 
     // Running the payout again (a retried job) pays nothing more.
     await processPayout(h.ctx, { userId: creator.id, address });
-    expect(await token.getFunction('balanceOf')(address)).toBe(parseEther('9'));
+    expect(await token.getFunction('balanceOf')(address)).toBe(parseEther('10.8'));
   });
 
   it('refuses to spend coins that have not arrived yet', async () => {
@@ -311,13 +321,13 @@ describe('paying for a video', () => {
     await buy(viewer, '100'); // still on its way
     const res = await unlock(viewer, video.id);
     expect(res.status).toBe(402);
-    expect(res.body.error.code).toBe('INSUFFICIENT_BALANCE');
+    expect((res.body.error as { code: string }).code).toBe('INSUFFICIENT_BALANCE');
     await settleAll();
     expect((await unlock(viewer, video.id)).status).toBe(200);
   });
 
   it('works for a creator whose wallet was never prepared', async () => {
-    const { video, creator } = await creatorWithVideo('5');
+    const { video, creator } = await creatorWithVideo('6');
     await h.ctx.prisma.managedWallet.deleteMany({ where: { userId: creator.id } });
     await h.ctx.prisma.user.update({ where: { id: creator.id }, data: { walletAddress: null } });
     const viewer = await registerUser(h);
@@ -326,7 +336,7 @@ describe('paying for a video', () => {
     await settleAll();
     const address = (await h.ctx.prisma.user.findUniqueOrThrow({ where: { id: creator.id } })).walletAddress as string;
     expect(address).toMatch(/^0x[0-9a-f]{40}$/);
-    expect(await h.ctx.chain!.getCreatorEarnings(address)).toBe(parseEther('4.5'));
+    expect(await h.ctx.chain!.getCreatorEarnings(address)).toBe(parseEther('5.4'));
   });
 });
 
@@ -337,20 +347,20 @@ describe('creator payouts', () => {
     expect(notCreator.status).toBe(403);
     expect(notCreator.body.error.code).toBe('NOT_CREATOR');
 
-    const { video, creator } = await creatorWithVideo('2'); // creator share 1.8, below the minimum of 2
+    const { video, creator } = await creatorWithVideo('1.2'); // creator share 1.08, below the minimum of 2
     await settleAll();
     await unlock(viewer, video.id);
     await settleAll();
     const tooSmall = await api(creator).post('/api/v1/creator/earnings/payout');
     expect(tooSmall.status).toBe(400);
-    expect(tooSmall.body.error).toMatchObject({ code: 'INVALID_AMOUNT', details: { minWei: strm('2'), claimableWei: strm('1.8') } });
+    expect(tooSmall.body.error).toMatchObject({ code: 'INVALID_AMOUNT', details: { minWei: strm('2'), claimableWei: strm('1.08') } });
     expect((await h.ctx.queues.settlement.getJobs(['waiting', 'delayed'])).filter((j) => j.name === 'payout')).toHaveLength(0);
   });
 });
 
 describe('admin revenue', () => {
   it('reports sales, the platform commission and the state of the wallet that pays gas', async () => {
-    const { video } = await creatorWithVideo('10');
+    const { video } = await creatorWithVideo('12');
     const viewer = await registerUser(h);
     await buy(viewer, '100');
     await settleAll();
@@ -368,9 +378,9 @@ describe('admin revenue', () => {
       paymentsMode: 'chain',
       walletMode: 'managed',
       feeBps: 1000,
-      grossSalesWei: strm('10'),
-      platformFeesWei: strm('1'),
-      creatorEarningsWei: strm('9'),
+      grossSalesWei: strm('12'),
+      platformFeesWei: strm('1.2'),
+      creatorEarningsWei: strm('10.8'),
       coinsSoldWei: strm('100'),
       pendingSettlements: 0,
       lowGas: false,
@@ -378,7 +388,7 @@ describe('admin revenue', () => {
     });
     expect(res.body.pendingCredits).toBe(1); // the admin's own welcome bonus
     expect(BigInt(res.body.bonusesWei)).toBe(parseEther('100'));
-    expect(BigInt(res.body.platformFeesOnChainWei)).toBeGreaterThanOrEqual(parseEther('1'));
+    expect(BigInt(res.body.platformFeesOnChainWei)).toBeGreaterThanOrEqual(parseEther('1.2'));
     expect(res.body.relayerAddress).toBe(h.ctx.chain!.relayerAddress);
     expect(BigInt(res.body.relayerGasWei)).toBeGreaterThan(0n);
     expect(BigInt(res.body.relayerCoinsWei)).toBeGreaterThan(0n);

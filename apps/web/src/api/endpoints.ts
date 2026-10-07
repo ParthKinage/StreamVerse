@@ -19,7 +19,6 @@ import type {
   AdminSettlementDto,
   AdminRevenue,
   ReceivedPaymentsResponse,
-  PurchaseResponse,
   UpdateVideoRequest,
 } from '@tesor_gp/shared';
 import { api, putFileWithProgress, uploadWithProgress } from './client';
@@ -62,9 +61,6 @@ export const walletApi = {
     api<{ orderId: string; amountWei: string; summary: WalletSummary }>('/wallet/topup', { method: 'POST', body: { accountId, amountWei } }),
 };
 
-export const purchaseApi = {
-  buy: (videoId: string) => api<PurchaseResponse>(`/videos/${encodeURIComponent(videoId)}/purchase`, { method: 'POST', body: {} }),
-};
 
 export const bankApi = {
   topUp: (accountId: string, amountWei: string) => api<{ summary: WalletSummary }>('/bank/topup', { method: 'POST', body: { accountId, amountWei } }),

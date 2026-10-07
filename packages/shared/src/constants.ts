@@ -8,14 +8,12 @@ export const VIEW_MIN_SECONDS = 30;
 export const LOW_BALANCE_SECONDS = 120;
 /** Seconds of balance required to start a session. */
 export const START_MIN_BALANCE_SECONDS = 60;
-/** Segment budget: media seconds served <= factor * verified + slack. */
-export const SEGMENT_BUDGET_FACTOR = 1.5;
-export const SEGMENT_BUDGET_SLACK_SEC = 120;
-
-/** A video has one price. Paying it unlocks the video for ACCESS_HOURS_DEFAULT hours (configurable per deployment). */
-export const MAX_VIDEO_PRICE_STRM = 500;
-export const DEFAULT_VIDEO_PRICE_STRM = '20';
-export const ACCESS_HOURS_DEFAULT = 48;
+/**
+ * Pricing: the creator sets a rate per minute; a viewer pays for each piece of the video the player is sent, once.
+ * Rewatching paid pieces is free forever; skipped pieces are never sent, so never paid.
+ */
+export const MAX_RATE_PER_MINUTE_STRM = 100;
+export const DEFAULT_RATE_PER_MINUTE_STRM = '1';
 export const MIN_VIDEO_TITLE = 1;
 export const MAX_VIDEO_TITLE = 120;
 export const MAX_VIDEO_DESCRIPTION = 5000;

@@ -63,6 +63,7 @@ model User {
   managedWallet  ManagedWallet?
   coinOrders     CoinOrder[]
   purchases      VideoPurchase[]
+  paidSegments   PaidSegment[]
   watchlist      WatchlistItem[]
   likes          VideoLike[]
 }
@@ -102,7 +103,9 @@ model Video {
   hlsManifestPath   String?
   thumbnailPath     String?
   durationSeconds   Int              @default(0)
+  /** Legacy one-time price (kept for history). Viewers now pay ratePerMinuteSTRM per second watched. */
   priceSTRM         Decimal          @default(20) @db.Decimal(38, 18)
+  ratePerMinuteSTRM Decimal          @default(1) @db.Decimal(38, 18)
   category          String           @default("General")
   tags              String[]
   processingStatus  ProcessingStatus @default(PENDING)
@@ -118,6 +121,7 @@ model Video {
   watchSessions WatchSession[]
   settlements   PaymentSettlement[]
   purchases     VideoPurchase[]
+  paidSegments  PaidSegment[]
   watchlist     WatchlistItem[]
   likes         VideoLike[]
 
@@ -355,4 +359,22 @@ model AppSetting {
   key       String   @id
   value     String
   updatedAt DateTime @updatedAt
+}
+
+/// A 4-second piece of a video a viewer has paid for. Paid once, free to rewatch forever.
+model PaidSegment {
+  userId       String
+  videoId      String
+  segmentIndex Int
+  durationMs   Int
+  amountSTRM   Decimal  @db.Decimal(38, 18)
+  sessionId    String
+  createdAt    DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  video Video @relation(fields: [videoId], references: [id])
+
+  @@id([userId, videoId, segmentIndex])
+  @@index([sessionId])
+  @@index([videoId])
 }

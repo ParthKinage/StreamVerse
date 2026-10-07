@@ -27,7 +27,7 @@ export default function Home(): JSX.Element {
     <div className="page">
       <section className="hero">
         <h1>Pay only for what you watch</h1>
-        <p className="muted">Pay once per video. Add money to your wallet, unlock the videos you want, and watch them for a limited time.</p>
+        <p className="muted">Pay only for what you watch, by the second. Rewatching is free and skipped parts cost nothing.</p>
         {!user ? (
           <Link to="/register" className="btn primary big">
             Create a free account

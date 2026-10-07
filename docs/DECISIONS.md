@@ -29,7 +29,7 @@ Status values: **approved** (in `STREAMVERSE_BUILD_SPEC.md` section 3), **defaul
 | STRM initial supply | 100,000,000 STRM (`STRM_INITIAL_SUPPLY`) | default applied, awaiting confirmation |
 | Welcome bonus | 50 STRM, once per user and once per wallet (`WELCOME_BONUS_STRM`) | default applied, awaiting confirmation |
 | Withdrawal delay | 15 minutes (`WITHDRAW_DELAY_SEC`) | default applied, awaiting confirmation |
-| Pricing | One price per video (default 20, max 500), paid once to unlock for 48 hours (`ACCESS_HOURS`); replaced the earlier per-minute billing at the owner's request | owner request; 48 hours is a default awaiting confirmation |
+| Pricing | **Per second watched** (owner request, 2026-10-07; replaced the one-price 48-hour unlock). See "Per-second billing" below. | owner decision |
 | Creator onboarding | Any user can create a channel; no approval step | default applied, awaiting confirmation |
 | Email verification / password reset | Not included (needs an email provider) | default applied, awaiting confirmation |
 
@@ -191,6 +191,22 @@ The node refuses a transaction unless the sender holds gas limit x the fee ceili
 | D-LOW-GAS | `LOW_GAS_MILLI` default raised from 20 (0.02) to 150 (0.15): what a full batch must hold up front. | implementation choice |
 | D-INDEXER-RANGE | Found 2026-10-07: balances stayed 0 although bonuses were confirmed, because the hosted RPC (Alchemy free plan) refuses `eth_getLogs` over more than 10 blocks and the indexer asked for 2,000. The indexer now steps down through 2000, 1000, 500, 100, 50, 10, 5, 1 until the RPC accepts, steps back up after 50 successes, and keeps reading for up to 10 s per tick while behind. `INDEXER_MAX_BLOCK_RANGE` sets the starting size. Catching up 4,856 blocks through that RPC was estimated at about 2 minutes of requests. | implementation choice |
 | D-CHAIN-ALTERNATIVES | Compared on 2026-10-07: Base Sepolia (cheap gas, but its Alchemy faucet needs 0.001 ETH on Ethereum mainnet), Tenderly Virtual TestNets (unlimited faucet, but the free plan has no public endpoint and stops at 50 blocks), a self-hosted chain (needs a paid server with a disk). Owner kept Polygon Amoy, topped up from faucets (Alchemy 0.1 POL per 24 h, QuickNode every 12 h). | owner decision |
+
+## Per-second billing (owner request, 2026-10-07)
+
+The viewer pays only for the seconds of a video they actually watch. Rewatching is free; skipped parts are never charged.
+
+| # | Decision | Status |
+|---|---|---|
+| D-RATE | The creator sets a **rate per minute** (default 1, maximum 100; 0 = free). Existing videos were converted so that watching them in full costs what their old price was (`rate = price x 60 / duration`). | owner decision (rate per minute); defaults awaiting confirmation |
+| D-WHAT-IS-WATCHED | The server never trusts the browser's playback position (security rule). What it can verify is which pieces of the video the player downloads, so billing is **per 4-second piece sent**: the first time a viewer's player fetches piece *n* of a video, the viewer pays `duration of piece x rate / 60` (floored to whole wei, never rounded up). Every piece passes the API (`/playback/:session/<rendition>/seg_<n>.ts`), is charged, then is served (local) or redirected to a 120-second signed bucket URL (s3). | implementation choice |
+| D-REWATCH | **Free forever**: a `PaidSegment` row (viewer, video, piece index) is written once; the index is the same in every rendition (keyframes on a fixed 4 s grid), so switching quality never charges twice. | owner decision |
+| D-SKIP | Skipped pieces are never fetched, so never paid; they are charged if the viewer goes back to them. | owner decision |
+| D-BUFFER | The player buffers at most 10 s ahead (`maxBufferLength` and `maxMaxBufferLength` = 10). The most a viewer pays for and does not watch is that buffer, about 10-12 s, at the moment they stop. Measured in a browser: 3 pieces at start, then one every 4 s. | implementation choice |
+| D-BALANCE | Starting a session needs about a minute of balance (or the rest of the video, if shorter), unless every remaining piece is already paid. Each new piece is refused with `402 INSUFFICIENT_BALANCE` when the balance cannot cover it; already-paid pieces keep playing. The player shows "Your balance has run out" with Add money / Buy coins and Continue. | implementation choice |
+| D-SETTLE | Charges add up on the watch session (reserved from the balance at once) and become **one settlement** when the session ends (explicit end, page close, reaper after 45 s without heartbeats, or a new session). Long sessions are bounded by the viewer's balance; periodic settlement every N minutes (spec E5) is not built yet. | implementation choice |
+| D-OLD-UNLOCKS | **Switched everyone now** (owner decision): active 48-hour unlocks no longer give access; `POST /videos/:id/purchase` returns `410`. Past purchases stay in the history. | owner decision |
+| D-SEGMENT-BUDGET-2 | The per-segment watch-time budget is removed: fetching ahead now costs the viewer money, so it no longer needs limiting. This also closes the D-SEGMENT-BUDGET trade-off above. | implementation choice |
 
 ## Limitations and unverified items (UNKNOWN)
 

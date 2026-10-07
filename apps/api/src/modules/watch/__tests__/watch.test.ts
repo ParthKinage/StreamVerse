@@ -1,6 +1,8 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { parseEther } from 'ethers';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { authed, createHarness, registerUser, resetDb, seedVideo, seedViewer, type Harness, type Viewer } from '../../../test/harness';
+import { authed, createHarness, fetchPiece, playbackCookie, registerUser, resetDb, seedVideo, seedViewer, watchPieces, type Harness, type Viewer } from '../../../test/harness';
 import { reapStaleSessions } from '..';
 
 let h: Harness;
@@ -14,11 +16,11 @@ beforeEach(async () => {
   await resetDb(h.ctx);
 });
 
-const PRICE = parseEther('5'); // default price of a seeded video
+// Seeded videos: 15 STRM per minute, so each 4-second piece costs 1 STRM and the 24 s fixture 6 STRM in full.
+const PIECE = parseEther('1');
+const FULL = parseEther('6');
 
-/** Tries to unlock the video first (a no-op error for free videos), then starts a session. Pass buy:false to skip the purchase. */
-async function start(viewer: Viewer, videoId: string, opts: { buy?: boolean } = {}) {
-  if (opts.buy !== false) await authed(h, viewer.user).post(`/api/v1/videos/${videoId}/purchase`).send({});
+async function start(viewer: Viewer, videoId: string) {
   return authed(h, viewer.user).post('/api/v1/watch/sessions').send({ videoId });
 }
 
@@ -29,40 +31,35 @@ async function beat(viewer: Viewer, sid: string, seq: number, opts: { advance?: 
     .send({ sequence: seq, playbackTime: opts.t ?? seq * 10, state: opts.state ?? 'playing' });
 }
 
+const sessionCharge = async (sid: string): Promise<bigint> => parseEther((await h.ctx.prisma.watchSession.findUniqueOrThrow({ where: { id: sid } })).chargedSTRM.toFixed());
+const available = async (viewer: Viewer): Promise<bigint> => BigInt((await authed(h, viewer.user).get('/api/v1/wallet/summary')).body.availableWei);
+
 describe('starting a session', () => {
-  it('returns a manifest URL, heartbeat interval and a path-scoped httpOnly playback cookie', async () => {
+  it('returns a manifest URL, the rate, the paid seconds and a path-scoped httpOnly playback cookie', async () => {
     const video = await seedVideo(h);
     const viewer = await seedViewer(h, '10');
     const res = await start(viewer, video.id);
     expect(res.status).toBe(201);
-    expect(res.body).toMatchObject({ heartbeatIntervalSec: 10, resumePositionSec: 0, free: false });
-    expect(new Date(res.body.accessUntil).getTime()).toBe(h.clock.now().getTime() + 48 * 3_600_000);
+    expect(res.body).toMatchObject({ heartbeatIntervalSec: 10, resumePositionSec: 0, free: false, paidSeconds: 0, accessUntil: null });
+    expect(res.body.ratePerMinuteWei).toBe(parseEther('15').toString());
     expect(res.body.manifestUrl).toBe(`/playback/${res.body.sessionId}/master.m3u8`);
-    expect(res.body.availableWei).toBe(parseEther('5').toString());
+    expect(res.body.availableWei).toBe(parseEther('10').toString());
     const cookie = (res.headers['set-cookie'] as unknown as string[]).find((c) => c.startsWith('pbt='));
     expect(cookie).toMatch(/HttpOnly/);
     expect(cookie).toContain(`Path=/playback/${res.body.sessionId}/`);
   });
 
-  it('needs a purchase first; buying needs a linked wallet and enough balance', async () => {
+  it('needs about a minute of balance (or the rest of the video, if shorter) and a linked wallet to start', async () => {
     const video = await seedVideo(h);
-    const viewer = await seedViewer(h, '10');
-    const unbought = await start(viewer, video.id, { buy: false });
-    expect(unbought.status).toBe(402);
-    expect(unbought.body.error.code).toBe('PURCHASE_REQUIRED');
-    expect(unbought.body.error.details.priceWei).toBe(PRICE.toString());
-
-    const noWallet = { user: await registerUser(h) } as Viewer;
-    const r1 = await authed(h, noWallet.user).post(`/api/v1/videos/${video.id}/purchase`).send({});
-    expect(r1.status).toBe(402);
-    expect(r1.body.error.code).toBe('WALLET_NOT_LINKED');
-
     const broke = await seedViewer(h, '0');
-    const r2 = await authed(h, broke.user).post(`/api/v1/videos/${video.id}/purchase`).send({});
-    expect(r2.status).toBe(402);
-    expect(r2.body.error.code).toBe('INSUFFICIENT_BALANCE');
-    expect(r2.body.error.details.requiredWei).toBe(PRICE.toString());
-    expect((await start(broke, video.id, { buy: false })).body.error.code).toBe('PURCHASE_REQUIRED');
+    const r = await start(broke, video.id);
+    expect(r.status).toBe(402);
+    expect(r.body.error.code).toBe('INSUFFICIENT_BALANCE');
+    expect(r.body.error.details.requiredWei).toBe(FULL.toString()); // the video is shorter than a minute
+    const noWallet = { user: await registerUser(h) } as Viewer;
+    expect((await start(noWallet, video.id)).body.error.code).toBe('WALLET_NOT_LINKED');
+    // the old one-time unlock is gone
+    expect((await authed(h, broke.user).post(`/api/v1/videos/${video.id}/purchase`).send({})).status).toBe(410);
   });
 
   it('refuses unpublished, unknown, and creators without a wallet', async () => {
@@ -71,31 +68,29 @@ describe('starting a session', () => {
     expect((await start(viewer, hidden.id)).body.error.code).toBe('VIDEO_NOT_AVAILABLE');
     expect((await start(viewer, 'nope')).status).toBe(404);
     const noPayout = await seedVideo(h, { linkCreatorWallet: false });
-    const buy = await authed(h, viewer.user).post(`/api/v1/videos/${noPayout.id}/purchase`).send({});
-    expect(buy.body.error.code).toBe('VIDEO_NOT_AVAILABLE');
+    expect((await start(viewer, noPayout.id)).body.error.code).toBe('VIDEO_NOT_AVAILABLE');
   });
 
   it('lets anyone watch free videos and creators watch their own videos for free', async () => {
-    const freeVideo = await seedVideo(h, { priceStrm: '0' });
-    const noWallet = { user: await registerUser(h) } as Viewer;
-    const r = await start(noWallet, freeVideo.id);
-    expect(r.status).toBe(201);
-    expect(r.body.free).toBe(true);
+    const freeVideo = await seedVideo(h, { rateStrm: '0' });
+    const noWallet = await registerUser(h);
+    const r = await watchPieces(h, noWallet, freeVideo.id, [0, 1]);
+    expect(r.start.status).toBe(201);
+    expect(r.start.body.free).toBe(true);
+    expect(r.statuses).toEqual([200, 200]);
+    expect(await sessionCharge(r.sid)).toBe(0n);
 
     const paid = await seedVideo(h);
-    const owner = { user: paid.creatorUser, wallet: paid.creatorWallet } as Viewer;
-    const own = await start(owner, paid.id);
-    expect(own.status).toBe(201);
-    expect(own.body.free).toBe(true);
-    const hb = await beat(owner, own.body.sessionId, 1);
-    expect(hb.body.chargedWei).toBe('0');
-    expect(hb.body.action).toBe('continue');
+    const own = await watchPieces(h, paid.creatorUser, paid.id, [0, 1, 2]);
+    expect(own.start.body.free).toBe(true);
+    expect(own.statuses).toEqual([200, 200, 200]);
+    expect(await sessionCharge(own.sid)).toBe(0n);
   });
 
   it('allows one concurrent stream: starting another ends the first and settles it', async () => {
     const v1 = await seedVideo(h);
     const v2 = await seedVideo(h);
-    const viewer = await seedViewer(h, '10');
+    const viewer = await seedViewer(h, '20');
     const first = await start(viewer, v1.id);
     await beat(viewer, first.body.sessionId, 1);
     const second = await start(viewer, v2.id);
@@ -110,8 +105,91 @@ describe('starting a session', () => {
   });
 });
 
+describe('paying per second watched', () => {
+  it('charges each new piece once, as it is sent', async () => {
+    const video = await seedVideo(h);
+    const viewer = await seedViewer(h, '10');
+    const r = await watchPieces(h, viewer.user, video.id, [0, 1]);
+    expect(r.statuses).toEqual([200, 200]);
+    expect(await sessionCharge(r.sid)).toBe(2n * PIECE);
+    expect(await available(viewer)).toBe(parseEther('8'));
+    const hb = await beat(viewer, r.sid, 1);
+    expect(hb.body).toMatchObject({ chargedWei: (2n * PIECE).toString(), paidSeconds: 8, action: 'continue' });
+    expect(hb.body.secondsRemaining).toBe(32); // 8 STRM at 15 per minute
+  });
+
+  it('never charges again for a piece already paid: rewinding, switching quality, or a later session', async () => {
+    const video = await seedVideo(h);
+    // a second rendition on the same 4-second grid
+    fs.cpSync(path.join(h.hlsDir, video.id, '360p'), path.join(h.hlsDir, video.id, '720p'), { recursive: true });
+    const viewer = await seedViewer(h, '10');
+    const r = await watchPieces(h, viewer.user, video.id, [0, 1, 2]);
+    expect(await sessionCharge(r.sid)).toBe(3n * PIECE);
+    expect((await fetchPiece(h, r.sid, r.cookie, 1)).status).toBe(200); // rewind
+    expect((await fetchPiece(h, r.sid, r.cookie, 2, '720p')).status).toBe(200); // quality switch
+    expect(await sessionCharge(r.sid)).toBe(3n * PIECE);
+    await authed(h, viewer.user).post(`/api/v1/watch/sessions/${r.sid}/end`).send({});
+
+    const later = await watchPieces(h, viewer.user, video.id, [0, 1, 2, 3]);
+    expect(later.start.body.paidSeconds).toBe(12);
+    expect(await sessionCharge(later.sid)).toBe(PIECE); // only piece 3 is new
+    expect(await h.ctx.prisma.paidSegment.count({ where: { userId: viewer.user.id, videoId: video.id } })).toBe(4);
+  });
+
+  it('does not charge for skipped pieces until they are watched', async () => {
+    const video = await seedVideo(h);
+    const viewer = await seedViewer(h, '10');
+    const r = await watchPieces(h, viewer.user, video.id, [0, 4, 5]); // skip from 0:04 to 0:16
+    expect(await sessionCharge(r.sid)).toBe(3n * PIECE);
+    const paid = await h.ctx.prisma.paidSegment.findMany({ where: { userId: viewer.user.id }, orderBy: { segmentIndex: 'asc' } });
+    expect(paid.map((p) => p.segmentIndex)).toEqual([0, 4, 5]);
+    expect((await fetchPiece(h, r.sid, r.cookie, 2)).status).toBe(200); // goes back to watch part of what was skipped
+    expect(await sessionCharge(r.sid)).toBe(4n * PIECE);
+  });
+
+  it('refuses new pieces once the balance runs out, while paid pieces keep playing', async () => {
+    const video = await seedVideo(h);
+    const viewer = await seedViewer(h, '10');
+    const r = await watchPieces(h, viewer.user, video.id, [0]);
+    // the viewer's balance drops (spent elsewhere): 2.5 on-chain minus the 1 owed for piece 0 leaves 1.5
+    await h.ctx.prisma.escrowAccount.update({ where: { userId: viewer.user.id }, data: { onChainBalance: '2.5' } });
+    expect((await fetchPiece(h, r.sid, r.cookie, 1)).status).toBe(200);
+    const refused = await fetchPiece(h, r.sid, r.cookie, 2);
+    expect(refused.status).toBe(402);
+    expect(refused.body.error.code).toBe('INSUFFICIENT_BALANCE');
+    expect(refused.body.error.details.requiredWei).toBe(PIECE.toString());
+    expect((await fetchPiece(h, r.sid, r.cookie, 0)).status).toBe(200); // already paid
+    expect(await sessionCharge(r.sid)).toBe(2n * PIECE);
+    expect(await h.ctx.prisma.paidSegment.count({ where: { userId: viewer.user.id } })).toBe(2);
+  });
+
+  it('lets a viewer with no balance rewatch a video they have fully paid for', async () => {
+    const video = await seedVideo(h);
+    const viewer = await seedViewer(h, '10');
+    const r = await watchPieces(h, viewer.user, video.id, [0, 1, 2, 3, 4, 5]);
+    await authed(h, viewer.user).post(`/api/v1/watch/sessions/${r.sid}/end`).send({});
+    // nothing left to spend: what remains on-chain is exactly what is owed for this session
+    await h.ctx.prisma.escrowAccount.update({ where: { userId: viewer.user.id }, data: { onChainBalance: '6' } });
+    const again = await watchPieces(h, viewer.user, video.id, [0, 5]);
+    expect(again.start.status).toBe(201);
+    expect(again.statuses).toEqual([200, 200]);
+    expect(await sessionCharge(again.sid)).toBe(0n);
+  });
+
+  it('turns the session total into one settlement when the session ends', async () => {
+    const video = await seedVideo(h);
+    const viewer = await seedViewer(h, '10');
+    const r = await watchPieces(h, viewer.user, video.id, [0, 1, 2]);
+    const end = await authed(h, viewer.user).post(`/api/v1/watch/sessions/${r.sid}/end`).send({});
+    expect(end.body.chargedWei).toBe((3n * PIECE).toString());
+    const settlement = await h.ctx.prisma.paymentSettlement.findUniqueOrThrow({ where: { id: end.body.settlementId } });
+    expect(settlement.amountSTRM.toFixed()).toBe('3');
+    expect(settlement.sessionId).toBe(r.sid);
+  });
+});
+
 describe('heartbeats', () => {
-  it('credits server wall-clock time and never charges for watching (the price was paid when unlocking)', async () => {
+  it('credits server wall-clock time; heartbeats themselves never charge', async () => {
     const video = await seedVideo(h);
     const viewer = await seedViewer(h, '10');
     const { body } = await start(viewer, video.id);
@@ -119,15 +197,14 @@ describe('heartbeats', () => {
     expect(hb.status).toBe(200);
     expect(hb.body.verifiedSeconds).toBe(10);
     expect(hb.body.chargedWei).toBe('0');
-    expect(hb.body.availableWei).toBe(parseEther('5').toString());
+    expect(hb.body.availableWei).toBe(parseEther('10').toString());
     expect(hb.body.action).toBe('continue');
     const hb2 = await beat(viewer, body.sessionId, 2, { advance: 10 });
     expect(hb2.body.verifiedSeconds).toBe(20);
     expect(hb2.body.chargedWei).toBe('0');
-    expect(hb2.body.availableWei).toBe(parseEther('5').toString());
   });
 
-  it('is idempotent: a replayed heartbeat returns the stored response and never double-charges', async () => {
+  it('is idempotent: a replayed heartbeat returns the stored response', async () => {
     const video = await seedVideo(h);
     const viewer = await seedViewer(h, '10');
     const { body } = await start(viewer, video.id);
@@ -141,7 +218,7 @@ describe('heartbeats', () => {
     expect(await h.ctx.prisma.watchHeartbeat.count({ where: { sessionId: body.sessionId } })).toBe(1);
   });
 
-  it('rejects a skipped or out-of-order sequence with 409 and does not bill it', async () => {
+  it('rejects a skipped or out-of-order sequence with 409 and does not count it', async () => {
     const video = await seedVideo(h);
     const viewer = await seedViewer(h, '10');
     const { body } = await start(viewer, video.id);
@@ -170,7 +247,7 @@ describe('heartbeats', () => {
     expect(row.verifiedDurationSeconds).toBeGreaterThanOrEqual(2); // fractional remainders carry, nothing is lost
   });
 
-  it('caps credit per heartbeat at interval + grace (a long gap is not billed in full)', async () => {
+  it('caps credit per heartbeat at interval + grace (a long gap is not credited in full)', async () => {
     const video = await seedVideo(h);
     const viewer = await seedViewer(h, '10');
     const { body } = await start(viewer, video.id);
@@ -178,7 +255,7 @@ describe('heartbeats', () => {
     expect(hb.body.verifiedSeconds).toBe(12);
   });
 
-  it('credits nothing while paused or buffering, and resumes billing from the next playing beat', async () => {
+  it('credits nothing while paused or buffering, and resumes from the next playing beat', async () => {
     const video = await seedVideo(h);
     const viewer = await seedViewer(h, '10');
     const { body } = await start(viewer, video.id);
@@ -189,30 +266,6 @@ describe('heartbeats', () => {
     expect(buffering.body.verifiedSeconds).toBe(0);
     const playing = await beat(viewer, body.sessionId, 3, { advance: 10, state: 'playing' });
     expect(playing.body.verifiedSeconds).toBe(10);
-  });
-
-  it('stops the session cleanly when paid access runs out, and a new session needs a new purchase', async () => {
-    const video = await seedVideo(h);
-    const viewer = await seedViewer(h, '10');
-    const { body } = await start(viewer, video.id);
-    const sid = body.sessionId as string;
-    const first = await beat(viewer, sid, 1);
-    expect(first.body.action).toBe('continue');
-    expect(first.body.accessUntil).toBe(body.accessUntil);
-    const last = await beat(viewer, sid, 2, { advance: 48 * 3600 });
-    expect(last.body.action).toBe('stop');
-    expect(last.body.reason).toBe('ACCESS_EXPIRED');
-    // no cookie renewal on stop
-    expect((last.headers['set-cookie'] as unknown as string[] | undefined)?.some((c) => c.startsWith('pbt='))).toBeFalsy();
-    const session = await h.ctx.prisma.watchSession.findUniqueOrThrow({ where: { id: sid } });
-    expect(session.status).toBe('COMPLETED');
-    expect(session.endReason).toBe('ACCESS_EXPIRED');
-    expect((await beat(viewer, sid, 3)).status).toBe(409);
-    expect((await start(viewer, video.id, { buy: false })).body.error.code).toBe('PURCHASE_REQUIRED');
-    // buying again works once the old window is over
-    const again = await authed(h, viewer.user).post(`/api/v1/videos/${video.id}/purchase`).send({});
-    expect(again.status).toBe(200);
-    expect(again.body.alreadyUnlocked).toBe(false);
   });
 
   it("never lets one viewer touch another viewer's session", async () => {
@@ -235,7 +288,7 @@ describe('heartbeats', () => {
 });
 
 describe('ending sessions', () => {
-  it('ends explicitly, charges nothing extra, counts a view at 30 s, and is idempotent', async () => {
+  it('ends explicitly, counts a view at 30 s, and is idempotent', async () => {
     const video = await seedVideo(h);
     const viewer = await seedViewer(h, '10');
     const { body } = await start(viewer, video.id);
@@ -243,11 +296,11 @@ describe('ending sessions', () => {
     const end = await authed(h, viewer.user).post(`/api/v1/watch/sessions/${body.sessionId}/end`).send({});
     expect(end.status).toBe(200);
     expect(end.body.verifiedSeconds).toBe(40);
-    expect(end.body.chargedWei).toBe('0');
+    expect(end.body.chargedWei).toBe('0'); // no piece was fetched
     expect(end.body.settlementId).toBeNull();
     const again = await authed(h, viewer.user).post(`/api/v1/watch/sessions/${body.sessionId}/end`).send({});
     expect(again.body.settlementId).toBeNull();
-    expect(await h.ctx.prisma.paymentSettlement.count({ where: { userId: viewer.user.id, videoId: video.id } })).toBe(1); // the purchase
+    expect(await h.ctx.prisma.paymentSettlement.count({ where: { userId: viewer.user.id, videoId: video.id } })).toBe(0);
     expect((await h.ctx.prisma.video.findUniqueOrThrow({ where: { id: video.id } })).viewsCount).toBe(1);
   });
 
@@ -272,28 +325,30 @@ describe('ending sessions', () => {
     expect(ok.body.verifiedSeconds).toBe(10);
   });
 
-  it('reaps sessions that stopped heartbeating', async () => {
+  it('reaps sessions that stopped heartbeating, and settles what they were charged', async () => {
     const video = await seedVideo(h);
     const viewer = await seedViewer(h, '10');
-    const { body } = await start(viewer, video.id);
-    await beat(viewer, body.sessionId, 1);
+    const r = await watchPieces(h, viewer.user, video.id, [0]);
+    await beat(viewer, r.sid, 1);
     h.clock.advance(20);
     expect(await reapStaleSessions(h.ctx)).toBe(0); // still within the 45 s timeout
     h.clock.advance(40);
     expect(await reapStaleSessions(h.ctx)).toBe(1);
-    const session = await h.ctx.prisma.watchSession.findUniqueOrThrow({ where: { id: body.sessionId } });
+    const session = await h.ctx.prisma.watchSession.findUniqueOrThrow({ where: { id: r.sid } });
     expect(session.status).toBe('COMPLETED');
     expect(session.endReason).toBe('TIMEOUT');
+    expect(await h.ctx.prisma.paymentSettlement.count({ where: { sessionId: r.sid } })).toBe(1);
   });
 
   it('records history and resume position for continue-watching', async () => {
     const video = await seedVideo(h);
     const viewer = await seedViewer(h, '10');
-    const { body } = await start(viewer, video.id);
-    await beat(viewer, body.sessionId, 1, { t: 12.4 });
-    await authed(h, viewer.user).post(`/api/v1/watch/sessions/${body.sessionId}/end`).send({});
+    const r = await watchPieces(h, viewer.user, video.id, [0, 1, 2]);
+    await beat(viewer, r.sid, 1, { t: 12.4 });
+    await authed(h, viewer.user).post(`/api/v1/watch/sessions/${r.sid}/end`).send({});
     const history = await authed(h, viewer.user).get('/api/v1/me/history');
-    expect(history.body.items[0]).toMatchObject({ sessionId: body.sessionId, watchedSeconds: 10, lastPositionSec: 12, paidWei: PRICE.toString() });
+    expect(history.body.items[0]).toMatchObject({ sessionId: r.sid, watchedSeconds: 10, lastPositionSec: 12, paidWei: (3n * PIECE).toString() });
+    expect(history.body.items[0].video.paidSeconds).toBe(12);
     const cont = await authed(h, viewer.user).get('/api/v1/me/continue-watching');
     expect(cont.body.items[0]).toMatchObject({ positionSec: 12 });
     expect(cont.body.items[0].video.id).toBe(video.id);
@@ -303,15 +358,14 @@ describe('ending sessions', () => {
 });
 
 describe('playback authorization', () => {
-  async function playing(price = '5') {
-    const video = await seedVideo(h, { priceStrm: price });
+  async function playing() {
+    const video = await seedVideo(h);
     const viewer = await seedViewer(h, '10');
     const res = await start(viewer, video.id);
-    const cookie = (res.headers['set-cookie'] as unknown as string[]).find((c) => c.startsWith('pbt='))!.split(';')[0]!;
-    return { video, viewer, sid: res.body.sessionId as string, cookie, endToken: res.body.endToken as string };
+    return { video, viewer, sid: res.body.sessionId as string, cookie: playbackCookie(res), endToken: res.body.endToken as string };
   }
-  const get = (path: string, cookie?: string) => {
-    const r = h.req().get(path);
+  const get = (p: string, cookie?: string) => {
+    const r = h.req().get(p);
     return cookie ? r.set('Cookie', cookie) : r;
   };
 
@@ -340,8 +394,7 @@ describe('playback authorization', () => {
     expect(expired.body.error.code).toBe('PLAYBACK_TOKEN_INVALID');
     // a heartbeat renews it
     const hb = await authed(h, viewer.user).post(`/api/v1/watch/sessions/${sid}/heartbeat`).send({ sequence: 1, playbackTime: 5, state: 'playing' });
-    const renewed = (hb.headers['set-cookie'] as unknown as string[]).find((c) => c.startsWith('pbt='))!.split(';')[0]!;
-    expect((await get(`/playback/${sid}/master.m3u8`, renewed)).status).toBe(200);
+    expect((await get(`/playback/${sid}/master.m3u8`, playbackCookie(hb))).status).toBe(200);
   });
 
   it("rejects another session's cookie with 403", async () => {
@@ -357,32 +410,10 @@ describe('playback authorization', () => {
     expect((await get(`/playback/${sid}/%2e%2e/%2e%2e/package.json`, cookie)).status).toBe(404);
     expect((await get(`/playback/${sid}/thumbnail.jpg`, cookie)).status).toBe(404);
     expect((await get(`/playback/${sid}/360p/missing.ts`, cookie)).status).toBe(404);
+    expect((await get(`/playback/${sid}/360p/seg_999.ts`, cookie)).status).toBe(404); // not in the playlist
     await authed(h, viewer.user).post(`/api/v1/watch/sessions/${sid}/end`).send({});
     expect((await get(`/playback/${sid}/master.m3u8`, cookie)).status).toBe(403);
-  });
-
-  it('enforces the segment budget: media served cannot run ahead of verified time', async () => {
-    const { sid, cookie, viewer } = await playing();
-    await get(`/playback/${sid}/360p/index.m3u8`, cookie); // records segment durations (4 s each)
-    await new Promise((r) => setTimeout(r, 100));
-    // budget with 0 verified seconds = 1.5*0 + 120 = 120 s = 30 segments of 4 s
-    let ok = 0;
-    let blocked = 0;
-    for (let i = 0; i < 33; i++) {
-      const r = await get(`/playback/${sid}/360p/seg_000.ts`, cookie);
-      if (r.status === 200) ok += 1;
-      else if (r.status === 429) {
-        blocked += 1;
-        expect(r.body.error.code).toBe('SEGMENT_BUDGET_EXCEEDED');
-        expect(r.headers['retry-after']).toBe('10');
-      }
-    }
-    expect(ok).toBe(30);
-    expect(blocked).toBe(3);
-    // a verified heartbeat raises the budget again
-    h.clock.advance(10);
-    const hb = await authed(h, viewer.user).post(`/api/v1/watch/sessions/${sid}/heartbeat`).send({ sequence: 1, playbackTime: 10, state: 'playing' });
-    const renewed = (hb.headers['set-cookie'] as unknown as string[]).find((c) => c.startsWith('pbt='))!.split(';')[0]!;
-    expect((await get(`/playback/${sid}/360p/seg_000.ts`, renewed)).status).toBe(200);
+    expect((await fetchPiece(h, sid, cookie, 0)).status).toBe(403);
+    expect(await h.ctx.prisma.paidSegment.count()).toBe(0);
   });
 });

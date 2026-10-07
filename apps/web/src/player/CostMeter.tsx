@@ -1,24 +1,34 @@
-import { formatDuration } from '../lib/format';
+import { formatDuration, money, rateLabel } from '../lib/format';
 import type { SessionState } from './sessionMachine';
 
-function untilLabel(iso: string | null): string {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
-}
-
-/** What the viewer sees while a video plays: time watched and how long the paid access lasts. Watching itself costs nothing extra. */
+/** What the viewer sees while a video plays: time watched, the rate, what this session has cost and the balance. */
 export function CostMeter({ state }: { state: SessionState }): JSX.Element | null {
-  if (state.phase === 'idle' || state.phase === 'starting') return null;
+  if (state.phase === 'idle' || state.phase === 'starting' || !state.sessionId) return null;
   return (
-    <dl className="cost-meter" aria-label="Playback" data-testid="cost-meter">
+    <dl className="cost-meter" aria-label="Playback cost" data-testid="cost-meter">
       <div>
         <dt>Time watched</dt>
         <dd data-testid="meter-time">{formatDuration(state.verifiedSeconds)}</dd>
       </div>
       <div>
-        <dt>Access</dt>
-        <dd data-testid="meter-access">{state.free ? 'Free' : `Until ${untilLabel(state.accessUntil)}`}</dd>
+        <dt>Rate</dt>
+        <dd data-testid="meter-rate">{state.free ? 'Free' : rateLabel(state.ratePerMinuteWei)}</dd>
       </div>
+      {state.free ? null : (
+        <>
+          <div>
+            <dt>This session</dt>
+            <dd data-testid="meter-spent">{money(state.chargedWei)}</dd>
+          </div>
+          <div>
+            <dt>Balance</dt>
+            <dd data-testid="meter-balance" className={state.lowBalance ? 'warn' : undefined}>
+              {money(state.availableWei)}
+              {state.lowBalance && state.secondsRemaining !== null ? ` · about ${formatDuration(state.secondsRemaining)} left` : ''}
+            </dd>
+          </div>
+        </>
+      )}
     </dl>
   );
 }

@@ -9,6 +9,7 @@ describe('playback problems', () => {
     expect(describeFailure({ type: 'networkError', status: 404, playlist: false })).toMatchObject({ kind: 'not-found', retry: 'reload' });
     expect(describeFailure({ type: 'networkError', status: 0, playlist: false })).toMatchObject({ kind: 'network', retry: 'reload' });
     expect(describeFailure({ type: 'networkError', status: 503, playlist: true }).message).toMatch(/connection/);
+    expect(describeFailure({ type: 'networkError', status: 402, playlist: false })).toMatchObject({ kind: 'balance', retry: 'reload' });
     expect(describeFailure({ type: 'mediaError', playlist: false })).toMatchObject({ kind: 'media' });
     expect(describeFailure({ type: 'otherError', playlist: false })).toMatchObject({ kind: 'unsupported' });
   });

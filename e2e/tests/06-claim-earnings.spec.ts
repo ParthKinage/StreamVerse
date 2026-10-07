@@ -3,9 +3,8 @@ import { test, expect } from '../fixtures';
 test('a creator claims earnings into their wallet', async ({ page, platform, catalog, helpers }) => {
   const viewer = await platform.newAccount({ strm: '8' });
   await platform.deposit(viewer, '6');
-  // Generate earnings for the seeded creator: the viewer unlocks the main video.
-  const bought = await platform.api(`/videos/${catalog.mainVideoId}/purchase`, { token: viewer.token, body: {} });
-  expect(bought.status, JSON.stringify(bought.body)).toBe(200);
+  // Generate earnings for the seeded creator: the viewer watches the first 20 s of the main video (1 STRM).
+  await platform.watchViaApi(viewer, catalog.mainVideoId, 5);
 
   const creatorAddr = platform.wallet(catalog.creator.key).address;
   await expect.poll(async () => await platform.creatorEarningsOf(creatorAddr), { timeout: 90_000 }).toBeGreaterThan(0n);

@@ -49,12 +49,12 @@ const CREATORS = [
 ] as const;
 
 const VIDEOS = [
-  { id: 'seed-video-1', creatorId: 'seed-creator-1', title: 'Intro to Test Patterns', category: 'Education', tags: ['intro', 'video', 'basics'], price: '20', seconds: 20, pattern: 'testsrc' },
-  { id: 'seed-video-2', creatorId: 'seed-creator-1', title: 'Colour Bars Explained', category: 'Education', tags: ['colour', 'video', 'broadcast'], price: '15', seconds: 24, pattern: 'smptebars' },
-  { id: 'seed-video-3', creatorId: 'seed-creator-1', title: 'Free Sample: Bouncing Pattern', category: 'Tech', tags: ['sample', 'free'], price: '0', seconds: 15, pattern: 'testsrc2' },
-  { id: 'seed-video-4', creatorId: 'seed-creator-2', title: 'Sine Sweep Visualised', category: 'Music', tags: ['audio', 'sine', 'music'], price: '30', seconds: 30, pattern: 'testsrc', audio: true },
-  { id: 'seed-video-5', creatorId: 'seed-creator-2', title: 'Rhythm of Colour', category: 'Art', tags: ['colour', 'art', 'rhythm'], price: '25', seconds: 25, pattern: 'rgbtestsrc', audio: true },
-  { id: 'seed-video-6', creatorId: 'seed-creator-2', title: 'Gradients in Motion', category: 'Art', tags: ['gradient', 'motion', 'art'], price: '10', seconds: 18, pattern: 'gradients' },
+  { id: 'seed-video-1', creatorId: 'seed-creator-1', title: 'Intro to Test Patterns', category: 'Education', tags: ['intro', 'video', 'basics'], rate: '30', seconds: 20, pattern: 'testsrc' },
+  { id: 'seed-video-2', creatorId: 'seed-creator-1', title: 'Colour Bars Explained', category: 'Education', tags: ['colour', 'video', 'broadcast'], rate: '30', seconds: 24, pattern: 'smptebars' },
+  { id: 'seed-video-3', creatorId: 'seed-creator-1', title: 'Free Sample: Bouncing Pattern', category: 'Tech', tags: ['sample', 'free'], rate: '0', seconds: 15, pattern: 'testsrc2' },
+  { id: 'seed-video-4', creatorId: 'seed-creator-2', title: 'Sine Sweep Visualised', category: 'Music', tags: ['audio', 'sine', 'music'], rate: '40', seconds: 30, pattern: 'testsrc', audio: true },
+  { id: 'seed-video-5', creatorId: 'seed-creator-2', title: 'Rhythm of Colour', category: 'Art', tags: ['colour', 'art', 'rhythm'], rate: '36', seconds: 25, pattern: 'rgbtestsrc', audio: true },
+  { id: 'seed-video-6', creatorId: 'seed-creator-2', title: 'Gradients in Motion', category: 'Art', tags: ['gradient', 'motion', 'art'], rate: '20', seconds: 18, pattern: 'gradients' },
 ] as const;
 
 function ffmpeg(bin: string, args: string[]): void {
@@ -161,7 +161,8 @@ async function main(): Promise<void> {
       hlsManifestPath: media.manifest,
       thumbnailPath: media.thumb,
       durationSeconds: v.seconds,
-      priceSTRM: v.price,
+      // Rate per minute; watching a whole demo video costs between 6 and 20 STRM (the welcome bonus is 50).
+      ratePerMinuteSTRM: v.rate,
       category: v.category,
       tags: [...v.tags],
       processingStatus: 'COMPLETED' as const,

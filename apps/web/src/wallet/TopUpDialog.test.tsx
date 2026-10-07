@@ -28,7 +28,7 @@ const config: ConfigResponse = {
   welcomeBonusWei: '0',
   withdrawDelaySec: 900,
   feeBps: 1000,
-  maxPriceWei: '500000000000000000000',
+  maxRatePerMinuteWei: '500000000000000000000',
   accessHours: 48,
   maxUploadMb: 1024,
   uploadMode: 'multipart',

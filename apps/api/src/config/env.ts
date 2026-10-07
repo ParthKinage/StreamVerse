@@ -111,11 +111,6 @@ const schema = z
     S3_FORCE_PATH_STYLE: truthy.default(false),
     /** How long a presigned upload URL stays valid. */
     UPLOAD_URL_TTL_SEC: z.coerce.number().int().min(60).max(24 * 3600).default(3600),
-    /**
-     * Each signed segment URL expires this many seconds after the moment the segment should play at normal speed,
-     * so a playlist issued now covers the whole video but a URL cannot be reused long after.
-     */
-    SEGMENT_URL_SLACK_SEC: z.coerce.number().int().min(30).max(24 * 3600).default(600),
     /** How often the API checks that every playable video still has its files (0 disables the check). */
     MEDIA_RECONCILE_EVERY_MIN: z.coerce.number().int().min(0).default(60),
     UPLOAD_DIR: z.string().default('./uploads'),

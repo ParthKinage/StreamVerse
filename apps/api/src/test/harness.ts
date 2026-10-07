@@ -191,7 +191,7 @@ export interface SeededVideo {
 /** Creates a creator (with linked wallet) and a published, COMPLETED video backed by the HLS fixture. */
 export async function seedVideo(
   h: Harness,
-  options: { priceStrm?: string; published?: boolean; title?: string; category?: string; tags?: string[]; creator?: SeededVideo; linkCreatorWallet?: boolean } = {},
+  options: { rateStrm?: string; published?: boolean; title?: string; category?: string; tags?: string[]; creator?: SeededVideo; linkCreatorWallet?: boolean } = {},
 ): Promise<SeededVideo> {
   let creatorUser: TestUser;
   let creatorWallet: Wallet;
@@ -212,7 +212,8 @@ export async function seedVideo(
       description: 'A seeded test video',
       creatorId: profileId,
       originalFilePath: path.join(inject('fixtureDir'), 'source.mp4'),
-      priceSTRM: options.priceStrm ?? '5',
+      // 15 STRM per minute = 1 STRM per 4-second piece; the 24 s fixture costs 6 STRM to watch in full.
+      ratePerMinuteSTRM: options.rateStrm ?? '15',
       category: options.category ?? 'Education',
       tags: options.tags ?? ['test'],
       processingStatus: 'COMPLETED',
@@ -258,4 +259,25 @@ export async function waitFor<T>(fn: () => Promise<T | false | undefined | null>
     if (Date.now() - started > timeoutMs) throw new Error('waitFor timed out');
     await new Promise((r) => setTimeout(r, intervalMs));
   }
+}
+
+/** Fetches one 4-second piece of a playing session through /playback, as the player does. */
+export function fetchPiece(h: Harness, sid: string, cookie: string, index: number, rendition = '360p') {
+  return h.req().get(`/playback/${sid}/${rendition}/seg_${String(index).padStart(3, '0')}.ts`).set('Cookie', cookie);
+}
+
+/** The playback cookie a session start (or heartbeat) response set. */
+export function playbackCookie(res: { headers: Record<string, unknown> }): string {
+  return (res.headers['set-cookie'] as string[]).find((c) => c.startsWith('pbt='))!.split(';')[0]!;
+}
+
+/** Starts a session and plays the given pieces; returns the start response, session id, cookie and piece statuses. */
+export async function watchPieces(h: Harness, user: Pick<TestUser, 'token'>, videoId: string, pieces: number[]) {
+  const start = await authed(h, user).post('/api/v1/watch/sessions').send({ videoId });
+  if (start.status !== 201) return { start, sid: '', cookie: '', statuses: [] as number[] };
+  const sid = start.body.sessionId as string;
+  const cookie = playbackCookie(start);
+  const statuses: number[] = [];
+  for (const i of pieces) statuses.push((await fetchPiece(h, sid, cookie, i)).status);
+  return { start, sid, cookie, statuses };
 }

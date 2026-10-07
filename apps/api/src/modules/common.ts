@@ -1,4 +1,4 @@
-import { decimalToWei, weiToDecimal, type UserDto, type VideoDto } from '@tesor_gp/shared';
+import { costForMs, decimalToWei, weiToDecimal, type UserDto, type VideoDto } from '@tesor_gp/shared';
 import type { Prisma } from '@tesor_gp/database';
 
 /** Prisma Decimal (or decimal string) to wei. Uses toFixed() so exponent notation never appears. */
@@ -39,7 +39,7 @@ export function thumbnailUrl(videoId: string, thumbnailPath: string | null): str
 
 export function videoToDto(
   v: VideoWithCreator,
-  extras: { liked?: boolean; inWatchlist?: boolean; likesCount?: number; accessUntil?: string | null } = {},
+  extras: { liked?: boolean; inWatchlist?: boolean; likesCount?: number; paidSeconds?: number } = {},
 ): VideoDto {
   return {
     id: v.id,
@@ -48,7 +48,9 @@ export function videoToDto(
     category: v.category,
     tags: v.tags,
     durationSeconds: v.durationSeconds,
-    priceWei: toWei(v.priceSTRM).toString(),
+    ratePerMinuteWei: toWei(v.ratePerMinuteSTRM).toString(),
+    priceWei: costForMs(v.durationSeconds * 1000, toWei(v.ratePerMinuteSTRM)).toString(),
+    accessUntil: null,
     thumbnailUrl: thumbnailUrl(v.id, v.thumbnailPath),
     viewsCount: v.viewsCount,
     createdAt: v.createdAt.toISOString(),

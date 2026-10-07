@@ -1,6 +1,6 @@
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type DragEvent } from 'react';
-import { ALLOWED_UPLOAD_MIME, DEFAULT_VIDEO_PRICE_STRM, type VideoDto } from '@tesor_gp/shared';
+import { ALLOWED_UPLOAD_MIME, DEFAULT_RATE_PER_MINUTE_STRM, type VideoDto } from '@tesor_gp/shared';
 import { ApiError, errorMessage } from '../../api/client';
 import { creatorApi } from '../../api/endpoints';
 import { keys, useConfig } from '../../api/queries';
@@ -8,7 +8,7 @@ import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { Modal } from '../../components/Modal';
 import { EmptyState, ErrorState, Skeleton } from '../../components/States';
 import { useToast } from '../../components/Toasts';
-import { formatDuration, money, moneyTitle, timeAgo } from '../../lib/format';
+import { formatDuration, money, moneyTitle, timeAgo, rateLabel } from '../../lib/format';
 import { VideoFields, validateVideoForm, weiToPriceInput, type VideoFormValues } from './VideoForm';
 
 const ALLOWED_EXT = ['.mp4', '.mov', '.mkv', '.webm', '.avi'];
@@ -65,7 +65,7 @@ export function UploadTab({ onUploaded }: { onUploaded(): void }): JSX.Element {
   const [file, setFile] = useState<File | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
-  const [values, setValues] = useState<VideoFormValues>({ title: '', description: '', category: 'General', tags: '', price: DEFAULT_VIDEO_PRICE_STRM });
+  const [values, setValues] = useState<VideoFormValues>({ title: '', description: '', category: 'General', tags: '', rate: DEFAULT_RATE_PER_MINUTE_STRM });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [progress, setProgress] = useState<number | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
@@ -88,7 +88,7 @@ export function UploadTab({ onUploaded }: { onUploaded(): void }): JSX.Element {
 
   const submit = async (): Promise<void> => {
     if (!file) return setFileError('Choose a video file first.');
-    const v = validateVideoForm(values, config ? Number(BigInt(config.maxPriceWei) / 10n ** 18n) : undefined);
+    const v = validateVideoForm(values, config ? Number(BigInt(config.maxRatePerMinuteWei) / 10n ** 18n) : undefined);
     setErrors(v.errors);
     if (Object.keys(v.errors).length) return;
     const fields: Record<string, string> = {
@@ -96,7 +96,7 @@ export function UploadTab({ onUploaded }: { onUploaded(): void }): JSX.Element {
       description: values.description.trim(),
       category: values.category,
       tags: (v.tags ?? []).join(','),
-      ...(v.priceWei !== undefined ? { priceWei: v.priceWei } : {}),
+      ...(v.rateWei !== undefined ? { ratePerMinuteWei: v.rateWei } : {}),
     };
     const ctl = new AbortController();
     abortRef.current = ctl;
@@ -198,7 +198,7 @@ function EditDialog({ video, onClose }: { video: VideoDto; onClose(): void }): J
     description: video.description,
     category: video.category,
     tags: video.tags.join(', '),
-    price: weiToPriceInput(video.priceWei),
+    rate: weiToPriceInput(video.ratePerMinuteWei),
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [pending, setPending] = useState(false);
@@ -211,7 +211,7 @@ function EditDialog({ video, onClose }: { video: VideoDto; onClose(): void }): J
     setPending(true);
     setServerError(null);
     try {
-      await creatorApi.update(video.id, { title: values.title.trim(), description: values.description.trim(), category: values.category, tags: v.tags ?? [], ...(v.priceWei !== undefined ? { priceWei: v.priceWei } : {}) });
+      await creatorApi.update(video.id, { title: values.title.trim(), description: values.description.trim(), category: values.category, tags: v.tags ?? [], ...(v.rateWei !== undefined ? { ratePerMinuteWei: v.rateWei } : {}) });
       await qc.invalidateQueries({ queryKey: keys.creatorVideos });
       toast.success('Video updated');
       onClose();
@@ -305,7 +305,7 @@ export function VideosTab({ onUpload }: { onUpload(): void }): JSX.Element {
           <tr>
             <th>Video</th>
             <th>Status</th>
-            <th className="num">Price</th>
+            <th className="num">Rate</th>
             <th>Uploaded</th>
             <th>Actions</th>
           </tr>
@@ -326,8 +326,8 @@ export function VideosTab({ onUpload }: { onUpload(): void }): JSX.Element {
                 <StatusBadge video={v} />
                 {v.processingStatus === 'PROCESSING' ? <progress value={v.transcodeProgress} max={100} aria-label={`Transcoding ${v.title}`} /> : null}
               </td>
-              <td className="num" title={moneyTitle(v.priceWei)}>
-                {money(v.priceWei)}
+              <td className="num" title={moneyTitle(v.ratePerMinuteWei)}>
+                {rateLabel(v.ratePerMinuteWei)}
               </td>
               <td>{timeAgo(v.createdAt)}</td>
               <td className="row-actions">

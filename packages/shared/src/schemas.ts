@@ -121,7 +121,8 @@ export const configResponse = z.object({
   welcomeBonusWei: weiString,
   withdrawDelaySec: z.number(),
   feeBps: z.number(),
-  maxPriceWei: weiString,
+  /** Highest rate per minute a creator may set. */
+  maxRatePerMinuteWei: weiString,
   /** How long a purchase keeps a video unlocked. */
   accessHours: z.number(),
   maxUploadMb: z.number(),
@@ -159,8 +160,13 @@ export const videoDto = z.object({
   category: z.string(),
   tags: z.array(z.string()),
   durationSeconds: z.number(),
+  /** What the creator charges per minute watched (billed per second of video actually sent). */
+  ratePerMinuteWei: weiString,
+  /** What watching the whole video once costs at that rate (rate x length). */
   priceWei: weiString,
-  /** When the signed-in viewer's paid access ends (ISO), if they currently have access. */
+  /** Seconds of this video the signed-in viewer has already paid for (free to watch again). */
+  paidSeconds: z.number().optional(),
+  /** Kept for older clients; always null since per-second billing replaced the timed unlock. */
   accessUntil: isoDate.nullable().optional(),
   thumbnailUrl: z.string().nullable(),
   viewsCount: z.number(),
@@ -217,7 +223,7 @@ export const updateVideoRequest = z
     description: z.string().trim().max(MAX_VIDEO_DESCRIPTION),
     category: z.string().trim().min(1).max(40),
     tags: tagsSchema,
-    priceWei: weiString,
+    ratePerMinuteWei: weiString,
   })
   .partial();
 export type UpdateVideoRequest = z.infer<typeof updateVideoRequest>;
@@ -250,7 +256,7 @@ export const uploadVideoFields = z.object({
     .optional()
     .transform((v) => (v ? v.split(',').map((t) => t.trim().toLowerCase()).filter(Boolean) : []))
     .pipe(tagsSchema),
-  priceWei: weiString.optional(),
+  ratePerMinuteWei: weiString.optional(),
 });
 
 /** Step 2 of a direct upload: the file is in storage; create the video from it. */
@@ -307,9 +313,13 @@ export const startSessionResponse = z.object({
   heartbeatIntervalSec: z.number(),
   resumePositionSec: z.number(),
   availableWei: weiString,
-  /** True when no purchase is needed (free video or the creator's own). */
+  /** True when nothing is charged (free video or the creator's own). */
   free: z.boolean(),
-  /** End of the paid access window, when the video was bought. */
+  /** The rate this session is billed at. */
+  ratePerMinuteWei: weiString,
+  /** Seconds of the video already paid for before this session (free to watch again). */
+  paidSeconds: z.number(),
+  /** Kept for older clients; always null. */
   accessUntil: isoDate.nullable(),
 });
 export type StartSessionResponse = z.infer<typeof startSessionResponse>;
@@ -332,7 +342,9 @@ export const heartbeatResponse = z.object({
   secondsRemaining: z.number().nullable(),
   action: heartbeatAction,
   /** Why the player was told to stop, when it was not a normal end. */
-  reason: z.enum(['ACCESS_EXPIRED']).optional(),
+  reason: z.enum(['ACCESS_EXPIRED', 'INSUFFICIENT_BALANCE']).optional(),
+  /** Seconds of this video the viewer has paid for so far, across all sessions. */
+  paidSeconds: z.number().optional(),
   accessUntil: isoDate.nullable().optional(),
 });
 export type HeartbeatResponse = z.infer<typeof heartbeatResponse>;
@@ -351,7 +363,7 @@ export const historyItem = z.object({
   sessionId: z.string(),
   video: videoDto,
   watchedSeconds: z.number(),
-  /** What the viewer paid to unlock this video (most recent purchase before the session), if anything. */
+  /** What this session cost (the pieces of video paid for during it). */
   paidWei: weiString,
   lastPositionSec: z.number(),
   watchedAt: isoDate,
