@@ -46,13 +46,15 @@ export interface AiClient {
   recommend(request: AiRecommendRequest): Promise<AiRecommendResponse | null>;
   health(): Promise<boolean>;
   readonly breaker: CircuitBreaker;
+  /** False when no AI service is configured, so callers can skip building a request. */
+  readonly enabled?: boolean;
 }
 
 /** HTTP client for the AI service. Returns null (never throws) so callers can use the fallback. */
 export function createAiClient(baseUrl: string | undefined, timeoutMs: number, fetchImpl: typeof fetch = fetch): AiClient {
   const breaker = new CircuitBreaker();
   // Not configured (for example the hosted image, which does not run the AI service): never wait on it.
-  if (!baseUrl) return { breaker, recommend: async () => null, health: async () => false };
+  if (!baseUrl) return { breaker, enabled: false, recommend: async () => null, health: async () => false };
   return {
     breaker,
     async recommend(request) {

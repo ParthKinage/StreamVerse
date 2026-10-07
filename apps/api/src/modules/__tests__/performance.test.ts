@@ -83,6 +83,25 @@ describe('recommendations without an AI service', () => {
     expect(await client.health()).toBe(false);
     expect(fetchImpl).not.toHaveBeenCalled();
   });
+
+  it('serves the trending list without loading candidates or the viewer history', async () => {
+    const a = await seedVideo(h, { linkCreatorWallet: false });
+    const b = await seedVideo(h, { linkCreatorWallet: false });
+    const user = await registerUser(h);
+    const history = vi.spyOn(h.ctx.prisma.watchSession, 'findMany');
+    try {
+      const res = await authed(h, user).get(`/api/v1/recommendations?videoId=${a.id}`);
+      expect(res.body.source).toBe('fallback');
+      expect(res.body.items.map((v: { id: string }) => v.id)).toEqual([b.id]);
+      expect(res.headers['cache-control']).toBe('private, no-store');
+      expect(history).not.toHaveBeenCalled();
+    } finally {
+      history.mockRestore();
+    }
+    const anon = await h.req().get('/api/v1/recommendations');
+    expect(anon.headers['cache-control']).toMatch(/^public, max-age=0, s-maxage=30, /);
+    expect(anon.body.items).toHaveLength(2);
+  });
 });
 
 describe('missing-media check', () => {
