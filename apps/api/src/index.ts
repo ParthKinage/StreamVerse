@@ -7,6 +7,7 @@ import { backfillManagedWallets, ensureLedgerScope, isManaged } from './modules/
 import { startMediaReconciler, startTranscodeListener } from './modules/media';
 import { getFeeBps, startSettlementWorker } from './modules/settlement';
 import { startReaper } from './modules/watch';
+import { startLiveReaper } from './modules/live';
 
 async function main(): Promise<void> {
   const env = loadEnv();
@@ -17,6 +18,7 @@ async function main(): Promise<void> {
   background.push(startTranscodeListener(ctx));
   background.push(startMediaReconciler(ctx));
   background.push(startReaper(ctx));
+  background.push(startLiveReaper(ctx));
 
   // Balances and payments belong to one ledger; notice (and optionally clear them) when the app is pointed at another.
   try {

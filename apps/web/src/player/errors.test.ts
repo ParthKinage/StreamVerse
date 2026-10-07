@@ -24,6 +24,12 @@ describe('playback problems', () => {
     expect(problemFromVideo({ processingStatus: 'COMPLETED', transcodeProgress: 100, failureReason: null })).toBeNull();
   });
 
+  it('plays a stream that is on air, and explains one that is not', () => {
+    expect(problemFromVideo({ processingStatus: 'PROCESSING', transcodeProgress: 0, failureReason: null, live: { status: 'LIVE' } })).toBeNull();
+    expect(problemFromVideo({ processingStatus: 'PROCESSING', transcodeProgress: 0, failureReason: null, live: { status: 'CREATED' } })?.message).toMatch(/not on air/);
+    expect(problemFromVideo({ processingStatus: 'COMPLETED', transcodeProgress: 100, failureReason: null, live: { status: 'ENDED' } })).toBeNull();
+  });
+
   it('retries only failures that can fix themselves', () => {
     expect([undefined, 0, 429, 500, 503].map(isTransientStatus)).toEqual([true, true, true, true, true]);
     expect([400, 401, 403, 404].map(isTransientStatus)).toEqual([false, false, false, false]);

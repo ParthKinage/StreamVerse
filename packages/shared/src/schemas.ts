@@ -2,6 +2,9 @@ import { z } from 'zod';
 import {
   ALLOWED_UPLOAD_MIME,
   CATEGORIES,
+  LIVE_FILE_NAME_RE,
+  LIVE_SEGMENT_MAX_MS,
+  LIVE_SEGMENT_MIN_MS,
   MAX_TAGS,
   MAX_TAG_LENGTH,
   MAX_VIDEO_DESCRIPTION,
@@ -179,6 +182,16 @@ export const videoDto = z.object({
   liked: z.boolean().optional(),
   inWatchlist: z.boolean().optional(),
   likesCount: z.number().optional(),
+  /** Set while the video is a live stream (or was one). */
+  live: z
+    .object({
+      streamId: z.string(),
+      status: z.enum(['CREATED', 'STARTING', 'LIVE', 'ENDING', 'ENDED', 'FAILED']),
+      startedAt: isoDate.nullable(),
+      viewers: z.number().optional(),
+    })
+    .nullable()
+    .optional(),
 });
 export type VideoDto = z.infer<typeof videoDto>;
 
@@ -463,3 +476,74 @@ export const adminRevenue = z.object({
   walletCount: z.number(),
 });
 export type AdminRevenue = z.infer<typeof adminRevenue>;
+
+// ---------- live streaming ----------
+export const liveStatusSchema = z.enum(['CREATED', 'STARTING', 'LIVE', 'ENDING', 'ENDED', 'FAILED']);
+export type LiveStatus = z.infer<typeof liveStatusSchema>;
+
+export const createLiveRequest = z.object({
+  title: z.string().trim().min(1).max(MAX_VIDEO_TITLE),
+  description: z.string().trim().max(MAX_VIDEO_DESCRIPTION).default(''),
+  category: z.string().trim().min(1).max(40).default('General'),
+  tags: tagsSchema.default([]),
+  ratePerMinuteWei: weiString.optional(),
+  /** Keep the recording as a normal video afterwards. */
+  saveAsVod: z.boolean().default(true),
+});
+export type CreateLiveRequest = z.input<typeof createLiveRequest>;
+
+/** Sent when the browser starts (or restarts) sending: what it encodes, so viewers' players can pick the stream. */
+export const startLiveRequest = z.object({
+  codecs: z.string().regex(/^[A-Za-z0-9.,]{3,100}$/),
+  width: z.number().int().min(16).max(3840),
+  height: z.number().int().min(16).max(2160),
+  bandwidth: z.number().int().min(10_000).max(20_000_000),
+});
+export type StartLiveRequest = z.infer<typeof startLiveRequest>;
+
+export const liveUploadUrlsRequest = z.object({ names: z.array(z.string().regex(LIVE_FILE_NAME_RE)).min(1).max(30) });
+export const liveUploadUrlsResponse = z.object({
+  items: z.array(
+    z.object({
+      name: z.string(),
+      url: z.string(),
+      method: z.literal('PUT'),
+      headers: z.record(z.string(), z.string()),
+      /** True when the URL is the API itself (local storage): send it with the login header. */
+      viaApi: z.boolean(),
+    }),
+  ),
+  expiresAt: isoDate,
+});
+export type LiveUploadUrlsResponse = z.infer<typeof liveUploadUrlsResponse>;
+
+export const commitLiveSegmentRequest = z.object({
+  index: z.number().int().min(0).max(999_999),
+  initSeq: z.number().int().min(0),
+  durationMs: z.number().int().min(LIVE_SEGMENT_MIN_MS).max(LIVE_SEGMENT_MAX_MS),
+});
+export type CommitLiveSegmentRequest = z.infer<typeof commitLiveSegmentRequest>;
+
+export const liveStreamDto = z.object({
+  id: z.string(),
+  videoId: z.string(),
+  status: liveStatusSchema,
+  title: z.string(),
+  ratePerMinuteWei: weiString,
+  saveAsVod: z.boolean(),
+  createdAt: isoDate,
+  startedAt: isoDate.nullable(),
+  endedAt: isoDate.nullable(),
+  endReason: z.string().nullable(),
+  /** Viewers watching now. */
+  viewers: z.number(),
+  peakViewers: z.number(),
+  /** Seconds of the stream sent so far. */
+  durationSeconds: z.number(),
+  /** The creator's share of what viewers have paid for this stream so far. */
+  earnedWei: weiString,
+  /** Where the sender carries on: the run number of its init piece and the next piece index. */
+  initSeq: z.number(),
+  nextIndex: z.number(),
+});
+export type LiveStreamDto = z.infer<typeof liveStreamDto>;

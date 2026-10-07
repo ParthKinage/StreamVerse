@@ -31,7 +31,16 @@ export function networkRetryDelayMs(attempt: number): number {
 }
 
 /** Problem shown before any request, from what the catalog already says about the video. */
-export function problemFromVideo(video: { processingStatus: string; transcodeProgress: number; failureReason: string | null }): PlaybackProblem | null {
+export function problemFromVideo(video: {
+  processingStatus: string;
+  transcodeProgress: number;
+  failureReason: string | null;
+  live?: { status: string } | null | undefined;
+}): PlaybackProblem | null {
+  if (video.live?.status === 'LIVE') return null;
+  if (video.live && video.live.status !== 'ENDED') {
+    return { kind: 'processing', message: video.live.status === 'FAILED' ? 'This stream did not take place.' : 'This stream is not on air yet.', retry: 'reload' };
+  }
   if (video.processingStatus === 'PENDING' || video.processingStatus === 'PROCESSING') {
     return { kind: 'processing', message: `This video is still being prepared (${video.transcodeProgress}%). Try again in a minute.`, retry: 'reload' };
   }

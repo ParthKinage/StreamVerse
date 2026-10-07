@@ -239,6 +239,48 @@ describe('playback from object storage', () => {
   });
 });
 
+describe('live streams on object storage', () => {
+  it('uploads pieces straight to the bucket, plays them through signed redirects and saves the recording there', async () => {
+    const owner = await creator();
+    const stream = await authed(h, owner).post('/api/v1/creator/live').send({ title: 'Bucket stream', ratePerMinuteWei: '0' });
+    expect(stream.status).toBe(201);
+    const id = stream.body.id as string;
+    const videoId = stream.body.videoId as string;
+    expect((await authed(h, owner).post(`/api/v1/creator/live/${id}/start`).send({ codecs: 'avc1.42001f', width: 640, height: 360, bandwidth: 800_000 })).status).toBe(200);
+
+    const urls = await authed(h, owner).post(`/api/v1/creator/live/${id}/upload-urls`).send({ names: ['init_0.mp4', 'seg_000000.m4s', 'thumbnail.jpg'] });
+    expect(urls.status).toBe(200);
+    for (const item of urls.body.items as Array<{ name: string; url: string; headers: Record<string, string>; viaApi: boolean }>) {
+      expect(item.viaApi).toBe(false);
+      const put = await fetch(item.url, { method: 'PUT', headers: item.headers, body: `bytes of ${item.name}` });
+      expect(put.status, item.name).toBe(200);
+    }
+    h.clock.advance(4);
+    expect((await authed(h, owner).post(`/api/v1/creator/live/${id}/segments`).send({ index: 0, initSeq: 0, durationMs: 4000 })).status).toBe(200);
+    expect((await authed(h, owner).post(`/api/v1/creator/live/${id}/thumbnail`).send({})).status).toBe(204);
+
+    const viewer = await registerUser(h);
+    const start = await authed(h, viewer).post('/api/v1/watch/sessions').send({ videoId });
+    expect(start.status).toBe(201);
+    const cookie = (start.headers['set-cookie'] as unknown as string[]).find((c) => c.startsWith('pbt='))!.split(';')[0]!;
+    const sid = start.body.sessionId as string;
+    expect((await h.req().get(`/playback/${sid}/src/index.m3u8`).set('Cookie', cookie)).text).toContain('seg_000000.m4s');
+    const piece = await h.req().get(`/playback/${sid}/src/seg_000000.m4s`).set('Cookie', cookie);
+    expect(piece.status).toBe(302);
+    expect(await (await fetch(piece.headers.location as string)).text()).toBe('bytes of seg_000000.m4s');
+    const init = await h.req().get(`/playback/${sid}/src/init_0.mp4`).set('Cookie', cookie);
+    expect(init.status).toBe(302);
+
+    await authed(h, owner).post(`/api/v1/creator/live/${id}/end`).send({});
+    expect(await store.getText(`hls/${videoId}/live/src/index.m3u8`)).toContain('#EXT-X-ENDLIST');
+    expect(await store.exists(`hls/${videoId}/live/master.m3u8`)).toBe(true);
+    const video = await h.ctx.prisma.video.findUniqueOrThrow({ where: { id: videoId } });
+    expect(video).toMatchObject({ processingStatus: 'COMPLETED', isPublished: true, thumbnailPath: `hls/${videoId}/live/thumbnail.jpg` });
+    h.clock.advance(11 * 60);
+    expect((await reconcileMissingMedia(h.ctx)).failed).toEqual([]);
+  });
+});
+
 describe('reconciling missing media', () => {
   it('marks only videos whose files are gone as FAILED, with a clear reason', async () => {
     const owner = await creator();

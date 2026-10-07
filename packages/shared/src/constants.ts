@@ -22,6 +22,20 @@ export const MAX_TAG_LENGTH = 30;
 export const PAGE_SIZE_DEFAULT = 20;
 export const PAGE_SIZE_MAX = 50;
 
+/**
+ * Live streams arrive from the creator's browser as fMP4 pieces of about 4 s (a new piece starts at a key frame).
+ * Pieces outside these bounds are refused; a stream with no new piece for LIVE_IDLE_TIMEOUT_SEC ends on its own.
+ */
+export const LIVE_SEGMENT_TARGET_SEC = 4;
+export const LIVE_SEGMENT_MIN_MS = 200;
+export const LIVE_SEGMENT_MAX_MS = 10_000;
+export const LIVE_SEGMENT_MAX_BYTES = 8 * 1024 * 1024;
+export const LIVE_IDLE_TIMEOUT_SEC = 60;
+/** Names of the files a live stream is made of: init_<run>.mp4, seg_<index>.m4s and one thumbnail. */
+export const LIVE_FILE_NAME_RE = /^(init_\d{1,4}\.mp4|seg_\d{6}\.m4s|thumbnail\.jpg)$/;
+export const liveSegmentName = (index: number): string => `seg_${String(index).padStart(6, '0')}.m4s`;
+export const liveInitName = (initSeq: number): string => `init_${initSeq}.mp4`;
+
 export const CATEGORIES = ['General', 'Education', 'Gaming', 'Music', 'Tech', 'Art', 'Sports', 'News'] as const;
 
 export const ALLOWED_UPLOAD_MIME = ['video/mp4', 'video/quicktime', 'video/webm', 'video/x-matroska', 'video/x-msvideo'] as const;
@@ -39,6 +53,9 @@ export const DOMAIN_EVENTS = {
   SETTLEMENT_FAILED: 'settlement.failed',
   ESCROW_UPDATED: 'escrow.updated',
   REWARD_GRANTED: 'reward.granted',
+  STREAM_CREATED: 'live.stream.created',
+  STREAM_STARTED: 'live.stream.started',
+  STREAM_ENDED: 'live.stream.ended',
 } as const;
 export type DomainEventName = (typeof DOMAIN_EVENTS)[keyof typeof DOMAIN_EVENTS];
 
@@ -78,6 +95,10 @@ export const ERROR_CODES = [
   'DAILY_LIMIT_REACHED',
   'MEDIA_MISSING',
   'UPLOAD_NOT_FOUND',
+  'INVALID_TRANSITION',
+  'LIVE_ALREADY_ACTIVE',
+  'LIVE_NOT_ACTIVE',
+  'LIVE_SEGMENT_INVALID',
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];
 

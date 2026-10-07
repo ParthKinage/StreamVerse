@@ -72,9 +72,11 @@ export function refreshAccessToken(): Promise<string | null> {
 }
 
 export interface RequestOptions {
-  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
+  method?: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
   body?: unknown;
   formData?: FormData;
+  /** Bytes sent as they are, with this content type (live pieces on local storage). */
+  raw?: { data: Blob | Uint8Array; contentType: string };
   query?: Record<string, string | number | undefined | null>;
   signal?: AbortSignal | undefined;
   /** Skip the Authorization header and the refresh-on-401 behaviour (login, register, refresh). */
@@ -94,13 +96,14 @@ function buildUrl(path: string, query?: RequestOptions['query']): string {
 async function send(path: string, opts: RequestOptions, token: string | null): Promise<Response> {
   const headers: Record<string, string> = {};
   if (opts.body !== undefined) headers['Content-Type'] = 'application/json';
+  if (opts.raw) headers['Content-Type'] = opts.raw.contentType;
   if (token && !opts.anonymous) headers.Authorization = `Bearer ${token}`;
   try {
     return await fetch(buildUrl(path, opts.query), {
       method: opts.method ?? 'GET',
       headers,
       credentials: 'include',
-      ...(opts.formData ? { body: opts.formData } : opts.body !== undefined ? { body: JSON.stringify(opts.body) } : {}),
+      ...(opts.formData ? { body: opts.formData } : opts.raw ? { body: opts.raw.data as BodyInit } : opts.body !== undefined ? { body: JSON.stringify(opts.body) } : {}),
       ...(opts.signal ? { signal: opts.signal } : {}),
       ...(opts.keepalive ? { keepalive: true } : {}),
     });

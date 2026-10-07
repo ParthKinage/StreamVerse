@@ -27,6 +27,8 @@ export default function Watch(): JSX.Element {
     queryKey: ['video', id, user?.id ?? 'anon'],
     queryFn: () => catalogApi.get(id),
     retry: (n, e) => !(e instanceof ApiError && e.status === 404) && n < 2,
+    // While a stream is on air, keep the viewer count current and notice when it ends.
+    refetchInterval: (q) => (q.state.data?.live?.status === 'LIVE' ? 15_000 : false),
   });
   const recs = useQuery({ queryKey: ['recommendations', 'watch', id], queryFn: () => catalogApi.recommendations(id, 8) });
   const { data: summary, refetch: refetchSummary } = useWalletSummary();
@@ -69,6 +71,7 @@ export default function Watch(): JSX.Element {
     return videoQ.error instanceof ApiError && videoQ.error.status === 404 ? <NotFound /> : <ErrorState message={errorMessage(videoQ.error)} onRetry={() => void videoQ.refetch()} />;
   }
   const video = videoQ.data;
+  const onAir = video.live?.status === 'LIVE';
   const rate = toBig(video.ratePerMinuteWei);
   const paid = rate > 0n;
   const isOwner = Boolean(user) && user?.username === video.creator.username;
@@ -80,7 +83,8 @@ export default function Watch(): JSX.Element {
   const payPerSecond = paid && !isOwner && Boolean(user) && walletReady;
   const available = toBig(summary?.availableWei);
   const paidSeconds = video.paidSeconds ?? 0;
-  const unpaidSeconds = Math.max(0, video.durationSeconds - paidSeconds);
+  // A live stream has no known end: count a minute ahead.
+  const unpaidSeconds = onAir ? 60 : Math.max(0, video.durationSeconds - paidSeconds);
   // What the rest of the video costs at this rate (seconds already paid are free).
   const restCost = (rate * BigInt(unpaidSeconds)) / 60n;
   const minuteCost = (rate * BigInt(Math.min(60, unpaidSeconds))) / 60n;
@@ -118,16 +122,16 @@ export default function Watch(): JSX.Element {
           <section className="card unlock-panel" aria-label="Pay as you watch" data-testid="pay-panel">
             <h2>Pay as you watch</h2>
             <p>
-              <strong data-testid="pay-rate">{rateLabel(video.ratePerMinuteWei)}</strong>, charged by the second you actually watch. Rewatching is free and
-              skipped parts cost nothing.
+              <strong data-testid="pay-rate">{rateLabel(video.ratePerMinuteWei)}</strong>, charged by the second you actually watch.{' '}
+              {onAir ? 'You pay only while you watch the stream.' : 'Rewatching is free and skipped parts cost nothing.'}
             </p>
             <p className="muted small">
-              {paidSeconds > 0 ? (
+              {paidSeconds > 0 && !onAir ? (
                 <span data-testid="pay-paid">
                   You have paid for {formatDuration(Math.min(paidSeconds, video.durationSeconds))} of this video.{' '}
                 </span>
               ) : null}
-              {unpaidSeconds > 0 ? <>The rest costs at most {money(restCost)}. </> : <>You can watch all of it again for free. </>}
+              {onAir ? null : unpaidSeconds > 0 ? <>The rest costs at most {money(restCost)}. </> : <>You can watch all of it again for free. </>}
               Your balance: <span data-testid="pay-balance">{money(available)}</span>
             </p>
             {lowForThis ? (
@@ -139,9 +143,18 @@ export default function Watch(): JSX.Element {
             ) : null}
           </section>
         ) : null}
-        <h1 className="watch-title">{video.title}</h1>
+        <h1 className="watch-title">
+          {onAir ? (
+            <span className="badge live" data-testid="watch-live">
+              LIVE
+            </span>
+          ) : null}{' '}
+          {video.title}
+        </h1>
         <p className="muted">
-          <Link to={`/channel/${video.creator.id}`}>{video.creator.channelName}</Link> · {formatViews(video.viewsCount)} · {timeAgo(video.createdAt)} · {rateLabel(video.ratePerMinuteWei)}
+          <Link to={`/channel/${video.creator.id}`}>{video.creator.channelName}</Link> ·{' '}
+          {onAir ? `${video.live?.viewers ?? 0} watching now` : `${formatViews(video.viewsCount)} · ${timeAgo(video.createdAt)}`} · {rateLabel(video.ratePerMinuteWei)}
+          {video.live?.status === 'ENDED' ? ' · recorded live' : ''}
         </p>
         <div className="actions">
           <button type="button" className={`btn ${video.liked ? 'primary' : ''}`} aria-pressed={Boolean(video.liked)} onClick={() => void toggle('like')}>

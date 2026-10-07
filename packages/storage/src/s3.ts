@@ -140,6 +140,19 @@ export class S3Store {
     );
   }
 
+  /** Writes a small object from memory (a playlist, for example). */
+  async putBytes(key: string, body: Uint8Array | string, opts: { contentType?: string; cacheControl?: string } = {}): Promise<void> {
+    await this.client.send(
+      new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        Body: body,
+        ContentType: opts.contentType ?? contentTypeFor(key),
+        ...(opts.cacheControl ? { CacheControl: opts.cacheControl } : {}),
+      }),
+    );
+  }
+
   /** Uploads every file under `dir` to `prefix/<relative path>`, a few at a time. Returns the keys written. */
   async putDirectory(prefix: string, dir: string, opts: { cacheControl?: (file: string) => string | undefined; concurrency?: number } = {}): Promise<string[]> {
     const files = listFiles(dir);

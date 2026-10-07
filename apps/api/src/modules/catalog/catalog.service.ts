@@ -6,6 +6,10 @@ import { notFound } from '../../middleware/errors';
 import { decodeCursor, encodeCursor, videoInclude, videoToDto, type VideoWithCreator } from '../common';
 
 export const publicVideoWhere: Prisma.VideoWhereInput = { isPublished: true, processingStatus: 'COMPLETED', archivedAt: null };
+/** A live stream that is on air now: watchable although its video is not in the catalog yet. */
+export const liveNowWhere: Prisma.VideoWhereInput = { archivedAt: null, liveStream: { is: { status: 'LIVE' } } };
+/** Everything a viewer may start watching. */
+export const watchableVideoWhere: Prisma.VideoWhereInput = { OR: [publicVideoWhere, liveNowWhere] };
 
 /** Adds per-user flags (liked, in watchlist) and like counts to a page of videos. */
 export async function decorateVideos(ctx: AppContext, videos: VideoWithCreator[], viewerId?: string): Promise<VideoDto[]> {
@@ -113,9 +117,14 @@ export async function getVideo(ctx: AppContext, id: string, viewer?: { id: strin
   const video = await ctx.prisma.video.findUnique({ where: { id }, include: { ...videoInclude, creator: { select: { ...videoInclude.creator.select, userId: true } } } });
   if (!video || video.archivedAt) throw notFound('Video not found');
   const isOwner = viewer && video.creator.userId === viewer.id;
-  const isPublic = video.isPublished && video.processingStatus === 'COMPLETED';
+  const isPublic = (video.isPublished && video.processingStatus === 'COMPLETED') || video.liveStream?.status === 'LIVE';
   if (!isPublic && !isOwner && viewer?.role !== 'ADMIN') throw notFound('Video not found');
-  return (await decorateVideos(ctx, [video], viewer?.id))[0] as VideoDto;
+  const dto = (await decorateVideos(ctx, [video], viewer?.id))[0] as VideoDto;
+  if (dto.live?.status === 'LIVE') {
+    const since = new Date(ctx.now().getTime() - ctx.env.SESSION_TIMEOUT_SEC * 1000);
+    dto.live.viewers = await ctx.prisma.watchSession.count({ where: { videoId: id, status: 'ACTIVE', lastHeartbeatAt: { gte: since } } });
+  }
+  return dto;
 }
 
 export async function getThumbnailPath(ctx: AppContext, id: string): Promise<string> {

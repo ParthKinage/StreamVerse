@@ -24,6 +24,16 @@ enum ProcessingStatus {
   FAILED
 }
 
+/** Lifecycle of a live stream; transitions are enforced in apps/api/src/modules/live/lifecycle.ts. */
+enum LiveStatus {
+  CREATED
+  STARTING
+  LIVE
+  ENDING
+  ENDED
+  FAILED
+}
+
 enum SessionStatus {
   ACTIVE
   PAUSED
@@ -92,6 +102,7 @@ model CreatorProfile {
   user        User                @relation(fields: [userId], references: [id])
   videos      Video[]
   settlements PaymentSettlement[]
+  liveStreams LiveStream[]
 }
 
 model Video {
@@ -124,6 +135,7 @@ model Video {
   paidSegments  PaidSegment[]
   watchlist     WatchlistItem[]
   likes         VideoLike[]
+  liveStream    LiveStream?
 
   @@index([creatorId])
   @@index([isPublished, processingStatus, createdAt])
@@ -377,4 +389,52 @@ model PaidSegment {
   @@id([userId, videoId, segmentIndex])
   @@index([sessionId])
   @@index([videoId])
+}
+
+/**
+ * A live stream sent from the creator's browser in 4-second pieces. Its media, watch sessions and per-second charges
+ * belong to a normal Video row (videoId), so billing is shared with videos on demand; when the stream ends the same
+ * Video becomes the recording.
+ */
+model LiveStream {
+  id          String     @id @default(uuid())
+  creatorId   String
+  videoId     String     @unique
+  status      LiveStatus @default(CREATED)
+  /** Keep the recording as a normal video when the stream ends. */
+  saveAsVod   Boolean    @default(true)
+  /** HLS CODECS value, e.g. "avc1.42001f,mp4a.40.2", reported by the browser that encodes the stream. */
+  codecs      String?
+  width       Int?
+  height      Int?
+  bandwidth   Int?
+  /** Bumped each time the creator (re)connects with a new init segment; pieces of one run share it. */
+  initSeq     Int        @default(0)
+  peakViewers Int        @default(0)
+  startedAt   DateTime?
+  lastPieceAt DateTime?
+  endedAt     DateTime?
+  endReason   String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  creator  CreatorProfile @relation(fields: [creatorId], references: [id])
+  video    Video          @relation(fields: [videoId], references: [id])
+  segments LiveSegment[]
+
+  @@index([status, startedAt])
+  @@index([creatorId, createdAt])
+}
+
+/** One uploaded piece of a live stream. `index` is the same numbering viewers are charged by (PaidSegment.segmentIndex). */
+model LiveSegment {
+  liveStreamId String
+  index        Int
+  initSeq      Int
+  durationMs   Int
+  createdAt    DateTime @default(now())
+
+  liveStream LiveStream @relation(fields: [liveStreamId], references: [id], onDelete: Cascade)
+
+  @@id([liveStreamId, index])
 }

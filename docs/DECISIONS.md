@@ -234,6 +234,37 @@ not visible from here). So most of the delay is distance plus sequential round t
 | D-REGION | **Owner decision needed.** Users are in India; the API and database are in the US. Moving the API, Neon and Upstash to one region near the users (for example Singapore) would remove most of the 300 ms per request. Render cannot move an existing service between regions; it means a new service, and Neon a new project or region. | open question |
 | D-PRECONNECT | Not added: the media host is only known from the signed redirect, and API calls are same-origin through Vercel, so a static preconnect would need another build setting for little gain. | implementation choice |
 
+## Live streaming (TESOR_LIVE_BUILD_SPEC Part E)
+
+**Owner decisions (E1), 2026-10-08.** Free hosting only (Render free, Vercel, Backblaze B2), so an RTMP ingest server
+is not possible: Render's free plan only accepts HTTP, sleeps when idle and restarts at will. The owner chose
+**browser streaming** after comparing it with a hosted live service (new account and keys, billing outside our
+server) and a self-hosted RTMP server on a free VM (sign-up usually needs a card, and the machine needs looking
+after). Latency target: standard HLS, about 10 to 20 s behind live. OBS works through **OBS Virtual Camera** (picture);
+OBS audio needs a virtual audio cable, explained in Studio.
+
+| # | Decision | Status |
+|---|---|---|
+| D-LIVE-INGEST | The creator's browser encodes the camera, screen or OBS Virtual Camera with WebCodecs and packs it as fragmented MP4 using **Mediabunny 1.61.3** (MPL-2.0, pure TypeScript, no native code): one init piece per connection and a piece at each key frame after at least 4 s (key frame every 2 s). Each piece is PUT straight to storage (a 10-minute signed URL, asked for 15 at a time) and then added to the playlist with `POST /creator/live/:id/segments`. On local storage the PUT goes to the API instead. Video above 720 lines is scaled down; one quality only. Codecs: H.264 if the browser can encode it, else VP9 or AV1; AAC, else Opus. | owner decision (browser streaming); implementation choice |
+| D-LIVE-MODEL | A `LiveStream` owns a normal `Video` row (`videoId`), which holds the title, rate, thumbnail and the files. Watch sessions, `PaidSegment` rows and settlements attach to that video, so live viewers are billed by exactly the same code as videos on demand (spec E5: "do not write a second billing engine"). This replaces the spec's `WatchSession.liveStreamId`. While on air the video is `PROCESSING`, so it is not in the catalog; `GET /live` lists it. | implementation choice |
+| D-LIVE-STATES | `CREATED -> STARTING -> LIVE -> ENDING -> ENDED`, and any unfinished state may go to `FAILED`; enforced in one function (`modules/live/lifecycle.ts`), invalid moves are `409 INVALID_TRANSITION`. Ending a stream that never started cancels it (`FAILED`, `CANCELLED`). | spec E3 |
+| D-LIVE-PLAYLIST | While on air the API builds the playlists from the `LiveSegment` table (shared by all viewers for 1 s): an `EVENT` playlist without an end tag, so players start near the newest piece. A reconnect (new init piece) is marked with `#EXT-X-DISCONTINUITY`. When the stream ends, the final playlists are written to storage and the video becomes `COMPLETED` and published: the recording is a normal video from then on (spec E7, no transcode needed). With "keep the recording" off, the video is archived and its files deleted. | implementation choice |
+| D-LIVE-BILLING | Viewers pay per piece fetched at the creator's rate per minute, once per piece, exactly as for videos (D-WHAT-IS-WATCHED). Starting needs a minute of balance. The init piece is free. A piece's length comes from the media itself (the fragment's sample durations). The server refuses pieces shorter than 0.2 s or longer than 10 s, pieces out of order or from an older connection, and pieces whose total runs more than 30 s ahead of the time since the stream started, so a sender cannot bill viewers for time that has not passed. | implementation choice |
+| D-LIVE-IDLE | A stream with no new piece for `LIVE_IDLE_TIMEOUT_SEC` (default 60) ends on its own (`CREATOR_DISCONNECTED`), keeping the recording. A creator who reloads the page within that time carries on in the same stream. Studio warns before closing the tab while live. | implementation choice |
+| D-LIVE-NO-KEYS | No stream keys and no media-server hooks (spec E3/E4): the browser sends with the creator's login, so there is no separate secret to leak. They come back if an RTMP server is added later. | implementation choice |
+| D-LIVE-SIZE | Live pieces are not checked with a HEAD request after upload (that would be one extra storage call every 4 s per stream). S3 cannot cap a presigned PUT, so a creator could store oversized pieces in their own stream; the URLs are only issued for that creator's own stream, for 10 minutes. | trade-off, owner to confirm |
+| D-LIVE-NOT-YET | Not built yet: tips (E4/E5), periodic settlement every N minutes for long sessions (E5), an admin list of streams (admins can force-end with `POST /admin/live/:id/end`), live chat. | open |
+
+**Verified 2026-10-08** on a local stack (Postgres, Redis, local storage, demo bank) in Google Chrome with a fake
+camera and microphone:
+- The stream went live about 9 s after "Go live".
+- A viewer joined from the home page's "Live now" row and played 1280x720. Each piece was paid about 3 s after it was uploaded.
+- The creator saw "1 watching".
+- The viewer paid 0.8 for about 15 s watched at 3 per minute (pieces of 4 s, 10 s buffer).
+- After "End stream" the 52 s recording was listed as a normal video and played and seeked like one.
+
+Not yet run on the hosted site.
+
 ## Limitations and unverified items (UNKNOWN)
 
 | Item | Why it could not be completed in the build environment |
@@ -242,6 +273,6 @@ not visible from here). So most of the delay is distance plus sequential round t
 | Manual run of `docs/DEMO.md` on Amoy | Depends on the item above and a real browser wallet. |
 | Playwright with real H.264 playback | The Chromium shipped with Playwright has no H.264 decoder and Chrome could not be downloaded. The suite therefore supports `E2E_FAKE_MEDIA=1`, which replaces the media element with a clock and still fetches the manifests and segments with the playback cookie, so billing, the segment budget and settlement are exercised for real. CI runs the suite with the Chrome channel (real decoding). |
 | `prisma migrate dev` drift check | Needs the Prisma schema engine (see above). |
-| Creator approval, email flows, IPFS, DRM, live streaming | Out of scope (spec section 16). |
+| Creator approval, email flows, IPFS, DRM | Out of scope (spec section 16). |
 | Object storage on the hosted site | Verified by tests (versitygw) and, on 2026-10-07, against the real Backblaze B2 bucket from a local API and worker in a real browser: `npm run setup:bucket` passed with a key limited to `streamverse-media` (it was allowed to set CORS), a 20 s clip uploaded straight to B2, transcoded, published and played with every segment from B2 (first segment 2.7 s, then about 0.45 s each, from India to us-east-005), and deleting the video removed its files from the bucket. Not yet run on Render. B2's documentation does not state a maximum presigned URL lifetime; we only use minutes to days, below the SigV4 maximum of 7 days. |
 | Browser scenario for upload to playback against storage (spec C3) | Checked by hand in a real browser against the local stack (upload, transcode, publish, play, restart, play again, missing files). The Playwright suite needs a `redis-server` binary, which is not installed on the owner's Windows machine, so the suite was not run. |

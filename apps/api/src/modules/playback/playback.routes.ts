@@ -1,15 +1,21 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { Router, type Response } from 'express';
-import { isObjectKey } from '@tesor_gp/storage';
+import { contentTypeFor, isObjectKey } from '@tesor_gp/storage';
 import type { AppContext } from '../../context';
 import { AppError, forbidden, notFound, unauthenticated } from '../../middleware/errors';
 import { chargeSegment } from '../watch/charges';
+import { isOnAir, liveSegmentDurationMs, livePlaylist } from '../live';
 import { PlaylistCache, resolveMediaKey } from './playlist';
 import { PLAYBACK_COOKIE, signPlaybackToken, verifyPlaybackToken } from './token';
 
-/** A segment file name on the 4-second grid, e.g. "480p/seg_012.ts". The index is the same in every rendition. */
-const SEGMENT_RE = /^([A-Za-z0-9_-]+)\/seg_(\d{1,6})\.ts$/;
+/**
+ * A segment file name on the 4-second grid, e.g. "480p/seg_012.ts" (transcoded) or "src/seg_000012.m4s" (live). The
+ * index is the same in every rendition.
+ */
+const SEGMENT_RE = /^([A-Za-z0-9_-]+)\/seg_(\d{1,6})\.(?:ts|m4s)$/;
+/** fMP4 init piece (codec setup, no pictures): free, like a playlist. */
+const INIT_RE = /^[A-Za-z0-9_-]+\/init_\d{1,4}\.mp4$/;
 const DEFAULT_SEGMENT_MS = 4000;
 /** The browser follows the redirect at once, so the signed segment URL only has to live briefly. */
 const SEGMENT_URL_TTL_SEC = 120;
@@ -64,8 +70,11 @@ function mediaSource(ctx: AppContext, cache: PlaylistCache, videoId: string, man
       },
     };
   }
+  // Files sit next to the master playlist: the video's own folder, or its "live" folder for a recorded stream.
+  const root = ctx.storage.resolveHlsPath(videoId, '.');
+  const sub = manifestPath && root && path.isAbsolute(manifestPath) ? path.relative(root, path.dirname(manifestPath)) : '';
   const fileOf = (rel: string): string => {
-    const file = ctx.storage.resolveHlsPath(videoId, rel);
+    const file = sub.startsWith('..') || path.isAbsolute(sub) ? undefined : ctx.storage.resolveHlsPath(videoId, path.join(sub, rel));
     if (!file) throw notFound();
     return file;
   };
@@ -75,7 +84,7 @@ function mediaSource(ctx: AppContext, cache: PlaylistCache, videoId: string, man
       const file = fileOf(rel);
       if (!fs.existsSync(file)) throw notFound();
       res.setHeader('Cache-Control', 'no-store');
-      res.type('video/mp2t').sendFile(file);
+      res.type(contentTypeFor(file)).sendFile(file);
     },
   };
 }
@@ -99,27 +108,41 @@ export function playbackRoutes(ctx: AppContext): Router {
 
     const session = await ctx.prisma.watchSession.findUnique({
       where: { id: sessionId },
-      select: { userId: true, videoId: true, status: true, video: { select: { hlsManifestPath: true } } },
+      select: {
+        userId: true,
+        videoId: true,
+        status: true,
+        video: { select: { hlsManifestPath: true, liveStream: { select: { id: true, status: true, codecs: true, width: true, height: true, bandwidth: true } } } },
+      },
     });
     if (!session || session.userId !== verdict.claims.uid) throw forbidden('Session not found for this token', 'PLAYBACK_TOKEN_INVALID');
     if (session.status !== 'ACTIVE') throw forbidden('Session is not active', 'SESSION_NOT_ACTIVE');
 
     const rel = path.posix.normalize(((req.params.splat as unknown as string[]) ?? []).join('/'));
     const media = mediaSource(ctx, playlists, session.videoId, session.video.hlsManifestPath);
+    // While a stream is on air its playlists come from the database; once it ends they are files like any video's.
+    const onAir = isOnAir(session.video.liveStream) ? session.video.liveStream : null;
 
     if (path.posix.extname(rel).toLowerCase() === '.m3u8') {
-      const text = await media.readText(rel);
+      const text = onAir ? await livePlaylist(ctx, onAir, rel) : await media.readText(rel);
       if (text === undefined) throw rel === 'master.m3u8' ? mediaMissing() : notFound();
       res.setHeader('Cache-Control', 'no-store');
       res.type('application/vnd.apple.mpegurl').send(text);
       return;
     }
 
+    if (INIT_RE.test(rel)) return void (await media.sendSegment(rel, res));
+
     const seg = SEGMENT_RE.exec(rel);
     if (!seg) throw notFound();
-    const playlist = await media.readText(`${seg[1]}/index.m3u8`);
-    if (playlist === undefined) throw notFound();
-    const durationMs = segmentDurations(playlist).get(path.posix.basename(rel));
+    let durationMs: number | undefined;
+    if (onAir) {
+      durationMs = await liveSegmentDurationMs(ctx, onAir.id, Number(seg[2]));
+    } else {
+      const playlist = await media.readText(`${seg[1]}/index.m3u8`);
+      if (playlist === undefined) throw notFound();
+      durationMs = segmentDurations(playlist).get(path.posix.basename(rel));
+    }
     if (durationMs === undefined) throw notFound();
 
     // Pay for the piece first (once per viewer, ever); only then hand it over.

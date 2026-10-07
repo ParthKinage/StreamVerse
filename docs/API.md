@@ -95,6 +95,27 @@ All require a bearer token; everything except `POST /creator/profile` also requi
 | `GET /creator/analytics` | Views, watch seconds, earnings by video and by day |
 | `GET /creator/earnings` | `claimableWei`, `lifetimeEarnedWei`, `pendingSettlementWei`. Claiming is the on-chain `claimEarnings()` |
 
+## Live streaming
+
+A live stream owns a video (`videoId`): viewers watch it with the normal `POST /watch/sessions` and `/playback`, and
+pay per piece exactly as for videos. Creator endpoints need a bearer token and a channel.
+
+| Endpoint | Notes |
+|---|---|
+| `GET /live` | Streams on air now, as videos with `live: {streamId, status, startedAt, viewers}`, busiest first. Public; cacheable for 10 s when anonymous |
+| `POST /creator/live` `{title, description?, category?, tags?, ratePerMinuteWei?, saveAsVod? (true)}` | 201 stream `{id, videoId, status: CREATED, ...}` |
+| `GET /creator/live`, `GET /creator/live/:id` | Own streams with `viewers`, `peakViewers`, `durationSeconds`, `earnedWei` (creator's share so far), `initSeq`, `nextIndex` |
+| `POST /creator/live/:id/start` `{codecs, width, height, bandwidth}` | Before sending, and after every reconnect: `CREATED -> STARTING`, or a new connection number (`initSeq`) if the stream already sent pieces. Returns where to carry on (`initSeq`, `nextIndex`). `409 INVALID_TRANSITION` once ended |
+| `POST /creator/live/:id/upload-urls` `{names}` | Up to 30 of `init_<n>.mp4`, `seg_<6 digits>.m4s`, `thumbnail.jpg`. Returns `{items: [{name, url, method: PUT, headers, viaApi}], expiresAt}`: signed storage URLs (10 minutes), or API paths on local storage (`viaApi: true`, send with the bearer token) |
+| `PUT /creator/live/:id/files/:name` | Local storage only; raw body up to 8 MB |
+| `POST /creator/live/:id/segments` `{index, initSeq, durationMs}` | Adds an uploaded piece to the playlist (the first one makes the stream `LIVE`). Repeating the same piece is accepted. `409 LIVE_SEGMENT_INVALID` for a piece out of order, from an older connection, or running ahead of the clock; `409 LIVE_NOT_ACTIVE` after the end |
+| `POST /creator/live/:id/thumbnail` | After uploading `thumbnail.jpg` |
+| `POST /creator/live/:id/end` | `ENDING -> ENDED`; the recording becomes a published video, or is deleted when `saveAsVod` is false. A stream that never started is cancelled (`FAILED`) |
+| `POST /admin/live/:id/end` | Admin: ends any stream (`ENDED_BY_ADMIN`) |
+
+While a stream is on air, `/playback/:session/master.m3u8` and `src/index.m3u8` are built from the database (no end
+tag); `src/init_<n>.mp4` is free; `src/seg_<n>.m4s` is charged like any piece.
+
 ## Watching and billing
 
 | Endpoint | Notes |

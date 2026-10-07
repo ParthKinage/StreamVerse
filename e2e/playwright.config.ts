@@ -26,6 +26,10 @@ export default defineConfig({
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     ...(channel ? { channel } : {}),
-    launchOptions: { ...(executablePath ? { executablePath } : {}), args: ['--autoplay-policy=no-user-gesture-required'] },
+    // A fake camera and microphone (a test pattern and a beep) for the live-streaming scenario; no permission prompt.
+    launchOptions: {
+      ...(executablePath ? { executablePath } : {}),
+      args: ['--autoplay-policy=no-user-gesture-required', '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'],
+    },
   },
 });
