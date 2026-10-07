@@ -257,6 +257,7 @@ export function Player({ video, session, videoRef, onRequestTopUp, topUpLabel = 
   };
 
   const notReady = problemFromVideo(video);
+  const onAir = video.live?.status === 'LIVE';
   const showStart = state.phase === 'idle' || state.phase === 'error';
   const showStopped = state.phase === 'stopped';
   const showEnded = state.phase === 'ended';
@@ -298,8 +299,9 @@ export function Player({ video, session, videoRef, onRequestTopUp, topUpLabel = 
                 {state.phase === 'error' ? 'Try again' : 'Play'}
               </button>
               <p className="muted small">
+                {onAir ? 'Live now · ' : ''}
                 {rateLabel(video.ratePerMinuteWei)}
-                {video.paidSeconds ? ` · ${formatDuration(video.paidSeconds)} already paid, free to rewatch` : ''}
+                {!onAir && video.paidSeconds ? ` · ${formatDuration(video.paidSeconds)} already paid, free to rewatch` : ''}
               </p>
             </>
           )}
@@ -356,11 +358,18 @@ export function Player({ video, session, videoRef, onRequestTopUp, topUpLabel = 
         <button type="button" className="icon-btn" onClick={togglePlay} aria-label={paused || !sessionLive ? 'Play' : 'Pause'}>
           {paused || !sessionLive ? '▶' : '❚❚'}
         </button>
-        <span className="time" aria-hidden="true">
-          {formatDuration(time)} / {formatDuration(duration)}
-        </span>
+        {onAir ? (
+          <span className="badge live" data-testid="player-live">
+            LIVE
+          </span>
+        ) : (
+          <span className="time" aria-hidden="true">
+            {formatDuration(time)} / {formatDuration(duration)}
+          </span>
+        )}
         <input
           type="range"
+          hidden={onAir}
           className="seek"
           min={0}
           max={Math.max(1, Math.floor(duration))}

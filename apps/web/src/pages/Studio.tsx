@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Suspense, lazy, useState } from 'react';
 import { useAuth } from '../auth/AuthContext';
 import { creatorApi } from '../api/endpoints';
 import { errorMessage } from '../api/client';
@@ -7,8 +7,12 @@ import { useToast } from '../components/Toasts';
 import { mapServerError, type FieldErrors } from '../lib/forms';
 import { EarningsCard } from '../components/EarningsCard';
 import { AnalyticsTab, UploadTab, VideosTab } from './studio/tabs';
+import { PageSpinner } from '../components/States';
 
-type Tab = 'videos' | 'upload' | 'analytics' | 'earnings';
+// The live sender carries a video encoder library; load it only when the creator opens this tab.
+const LiveTab = lazy(() => import('./studio/LiveTab').then((m) => ({ default: m.LiveTab })));
+
+type Tab = 'videos' | 'upload' | 'live' | 'analytics' | 'earnings';
 
 function BecomeCreator(): JSX.Element {
   const { setUser } = useAuth();
@@ -59,6 +63,7 @@ export default function Studio(): JSX.Element {
   const tabs: Array<[Tab, string]> = [
     ['videos', 'Videos'],
     ['upload', 'Upload'],
+    ['live', 'Go live'],
     ['analytics', 'Analytics'],
     ['earnings', 'Earnings'],
   ];
@@ -75,6 +80,11 @@ export default function Studio(): JSX.Element {
       <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
         {tab === 'videos' ? <VideosTab onUpload={() => setTab('upload')} /> : null}
         {tab === 'upload' ? <UploadTab onUploaded={() => setTab('videos')} /> : null}
+        {tab === 'live' ? (
+          <Suspense fallback={<PageSpinner label="Loading" />}>
+            <LiveTab />
+          </Suspense>
+        ) : null}
         {tab === 'analytics' ? <AnalyticsTab /> : null}
         {tab === 'earnings' ? <EarningsCard /> : null}
       </div>

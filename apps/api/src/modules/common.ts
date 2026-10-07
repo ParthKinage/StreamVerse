@@ -23,6 +23,7 @@ export function parseDurationMs(input: string): number {
 
 export const videoInclude = {
   creator: { select: { id: true, channelName: true, user: { select: { username: true } } } },
+  liveStream: { select: { id: true, status: true, startedAt: true } },
 } satisfies Prisma.VideoInclude;
 
 export type VideoWithCreator = Prisma.VideoGetPayload<{ include: typeof videoInclude }>;
@@ -59,6 +60,7 @@ export function videoToDto(
     processingStatus: v.processingStatus,
     transcodeProgress: v.transcodeProgress,
     failureReason: v.failureReason,
+    live: v.liveStream ? { streamId: v.liveStream.id, status: v.liveStream.status, startedAt: v.liveStream.startedAt?.toISOString() ?? null } : null,
     ...extras,
   };
 }

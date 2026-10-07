@@ -18,7 +18,7 @@ import type { Prisma } from '@tesor_gp/database';
 import type { AppContext } from '../../context';
 import { AppError, conflict, forbidden, notFound } from '../../middleware/errors';
 import { decodeCursor, encodeCursor, fromWei, toWei, videoInclude } from '../common';
-import { decorateVideos, publicVideoWhere } from '../catalog';
+import { decorateVideos, publicVideoWhere, watchableVideoWhere } from '../catalog';
 import { signEndToken } from '../playback';
 import { enqueueSettlement, getFeeBps, settlementKeyFor } from '../settlement';
 import { ensureManagedWallet, isManaged } from '../managed/wallets';
@@ -103,8 +103,8 @@ export interface StartResult {
 
 export async function startSession(ctx: AppContext, userId: string, videoId: string): Promise<StartResult> {
   const video = await ctx.prisma.video.findFirst({
-    where: { id: videoId, ...publicVideoWhere },
-    include: { creator: { select: { userId: true, user: { select: { walletAddress: true } } } } },
+    where: { id: videoId, ...watchableVideoWhere },
+    include: { creator: { select: { userId: true, user: { select: { walletAddress: true } } } }, liveStream: { select: { status: true } } },
   });
   if (!video) throw new AppError(404, 'VIDEO_NOT_AVAILABLE', 'This video is not available');
 
@@ -125,8 +125,10 @@ export async function startSession(ctx: AppContext, userId: string, videoId: str
 
   let available = (await getBalances(ctx.prisma, userId)).available;
   const paidSeconds = await paidSecondsFor(ctx, userId, videoId);
-  // Starting needs about a minute of balance, unless everything left to watch has already been paid for.
-  const unpaidSeconds = Math.max(0, video.durationSeconds - paidSeconds);
+  // Starting needs about a minute of balance, unless everything left to watch has already been paid for. A live stream
+  // has no known length, so it always needs the minute.
+  const onAir = video.liveStream?.status === 'LIVE';
+  const unpaidSeconds = onAir ? START_MIN_BALANCE_SECONDS : Math.max(0, video.durationSeconds - paidSeconds);
   const needed = costForSeconds(Math.min(START_MIN_BALANCE_SECONDS, unpaidSeconds), rate);
   if (!free && unpaidSeconds > 0 && available < needed) {
     throw new AppError(402, 'INSUFFICIENT_BALANCE', 'Add money to start watching', { requiredWei: weiToString(needed), availableWei: weiToString(available) });
@@ -165,7 +167,7 @@ export async function startSession(ctx: AppContext, userId: string, videoId: str
 
   ctx.events.emit(DOMAIN_EVENTS.SESSION_STARTED, { sessionId: session.id, userId, videoId });
 
-  const resume = last && video.durationSeconds > 0 && last.lastPlaybackTime < video.durationSeconds - 5 ? Math.floor(last.lastPlaybackTime) : 0;
+  const resume = !onAir && last && video.durationSeconds > 0 && last.lastPlaybackTime < video.durationSeconds - 5 ? Math.floor(last.lastPlaybackTime) : 0;
   return {
     userId,
     response: {

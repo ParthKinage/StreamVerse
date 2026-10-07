@@ -23,6 +23,7 @@ import { socialRoutes } from './modules/social';
 import { usersRoutes } from './modules/users';
 import { walletRoutes } from './modules/wallet';
 import { watchRoutes } from './modules/watch';
+import { liveRoutes } from './modules/live';
 
 export function createApp(ctx: AppContext): express.Express {
   const app = express();
@@ -64,6 +65,7 @@ export function createApp(ctx: AppContext): express.Express {
     recommendationRoutes(ctx),
     socialRoutes(ctx),
     adminRoutes(ctx),
+    liveRoutes(ctx),
   ]) {
     api.use(router);
   }

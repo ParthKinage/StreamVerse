@@ -94,6 +94,8 @@ export async function listOwnVideos(ctx: AppContext, userId: string, cursor: str
     where: {
       creatorId: profile.id,
       archivedAt: null,
+      // A stream on air is managed in the Live tab; it appears here as a video once it has ended.
+      NOT: { liveStream: { is: { status: { in: ['CREATED', 'STARTING', 'LIVE', 'ENDING'] } } } },
       ...(cur ? { OR: [{ createdAt: { lt: new Date(cur.t) } }, { createdAt: new Date(cur.t), id: { lt: cur.id } }] } : {}),
     },
     include: videoInclude,

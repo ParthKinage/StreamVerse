@@ -20,6 +20,10 @@ import type {
   AdminRevenue,
   ReceivedPaymentsResponse,
   UpdateVideoRequest,
+  CreateLiveRequest,
+  LiveStreamDto,
+  LiveUploadUrlsResponse,
+  StartLiveRequest,
 } from '@tesor_gp/shared';
 import { api, putFileWithProgress, uploadWithProgress } from './client';
 
@@ -121,6 +125,22 @@ export const creatorApi = {
   earnings: () => api<CreatorEarnings>('/creator/earnings'),
   /** Built-in wallets: asks the platform to pay the creator's earnings out to their wallet. */
   payout: () => api<{ amountWei: string }>('/creator/earnings/payout', { method: 'POST', body: {} }),
+};
+
+export const liveApi = {
+  /** Streams on air now; the same for everyone, so sent without the login header. */
+  now: () => api<{ items: VideoDto[] }>('/live', { anonymous: true }),
+  create: (b: CreateLiveRequest) => api<LiveStreamDto>('/creator/live', { method: 'POST', body: b }),
+  mine: () => api<{ items: LiveStreamDto[] }>('/creator/live'),
+  get: (id: string) => api<LiveStreamDto>(`/creator/live/${encodeURIComponent(id)}`),
+  start: (id: string, b: StartLiveRequest) => api<LiveStreamDto>(`/creator/live/${encodeURIComponent(id)}/start`, { method: 'POST', body: b }),
+  uploadUrls: (id: string, names: string[]) => api<LiveUploadUrlsResponse>(`/creator/live/${encodeURIComponent(id)}/upload-urls`, { method: 'POST', body: { names } }),
+  /** Local storage only: the URL from uploadUrls is an API path. */
+  putViaApi: (path: string, data: Uint8Array | Blob, contentType: string) => api<void>(path, { method: 'PUT', raw: { data, contentType } }),
+  commit: (id: string, b: { index: number; initSeq: number; durationMs: number }) =>
+    api<{ status: string; nextIndex: number }>(`/creator/live/${encodeURIComponent(id)}/segments`, { method: 'POST', body: b }),
+  thumbnail: (id: string) => api<void>(`/creator/live/${encodeURIComponent(id)}/thumbnail`, { method: 'POST', body: {} }),
+  end: (id: string) => api<LiveStreamDto>(`/creator/live/${encodeURIComponent(id)}/end`, { method: 'POST', body: {} }),
 };
 
 export const adminApi = {

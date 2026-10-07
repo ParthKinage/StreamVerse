@@ -3,12 +3,14 @@ import type { VideoDto } from '@tesor_gp/shared';
 import { formatDuration, formatViews, moneyTitle, rateLabel, timeAgo } from '../lib/format';
 
 export function VideoCard({ video, progress }: { video: VideoDto; progress?: number | undefined }): JSX.Element {
+  const onAir = video.live?.status === 'LIVE';
   return (
     <article className="video-card">
       <Link to={`/watch/${video.id}`} className="thumb-link" aria-label={`Watch ${video.title}`}>
         <div className="thumb">
           {video.thumbnailUrl ? <img src={video.thumbnailUrl} alt="" loading="lazy" decoding="async" /> : <div className="thumb-fallback" aria-hidden="true" />}
-          {video.durationSeconds > 0 ? <span className="badge duration">{formatDuration(video.durationSeconds)}</span> : null}
+          {onAir ? <span className="badge live">LIVE</span> : null}
+          {!onAir && video.durationSeconds > 0 ? <span className="badge duration">{formatDuration(video.durationSeconds)}</span> : null}
           {progress !== undefined && video.durationSeconds > 0 ? (
             <span className="progress-bar" aria-hidden="true">
               <span style={{ width: `${Math.min(100, Math.round((progress / video.durationSeconds) * 100))}%` }} />
@@ -24,7 +26,8 @@ export function VideoCard({ video, progress }: { video: VideoDto; progress?: num
           <Link to={`/channel/${video.creator.id}`}>{video.creator.channelName}</Link>
         </p>
         <p className="muted small">
-          {formatViews(video.viewsCount)} · {timeAgo(video.createdAt)}
+          {onAir ? `${video.live?.viewers ?? 0} watching now` : `${formatViews(video.viewsCount)} · ${timeAgo(video.createdAt)}`}
+          {video.live?.status === 'ENDED' ? ' · recorded live' : ''}
         </p>
         <p className="rate" title={moneyTitle(video.ratePerMinuteWei)}>
           {rateLabel(video.ratePerMinuteWei)}

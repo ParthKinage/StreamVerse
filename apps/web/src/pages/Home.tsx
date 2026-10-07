@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { errorMessage } from '../api/client';
-import { catalogApi } from '../api/endpoints';
+import { catalogApi, liveApi } from '../api/endpoints';
 import { useCategories, useContinueWatching } from '../api/queries';
 import { EmptyState, ErrorState, VideoGridSkeleton } from '../components/States';
 import { VideoCard } from '../components/VideoCard';
@@ -22,6 +22,7 @@ export default function Home(): JSX.Element {
   const recs = useQuery({ queryKey: ['recommendations', 'home', user?.id ?? 'anon'], queryFn: () => catalogApi.recommendations(undefined, 12) });
   const trending = useQuery({ queryKey: ['videos', 'trending'], queryFn: () => catalogApi.list({ sort: 'trending', limit: 12 }) });
   const cats = useCategories();
+  const live = useQuery({ queryKey: ['live', 'now'], queryFn: liveApi.now, refetchInterval: 30_000 });
 
   return (
     <div className="page">
@@ -34,6 +35,16 @@ export default function Home(): JSX.Element {
           </Link>
         ) : null}
       </section>
+
+      {live.data?.items.length ? (
+        <Section title="Live now">
+          <div className="video-grid" data-testid="live-now">
+            {live.data.items.map((v) => (
+              <VideoCard key={v.id} video={v} />
+            ))}
+          </div>
+        </Section>
+      ) : null}
 
       {user ? (
         <Section title="Continue watching">
