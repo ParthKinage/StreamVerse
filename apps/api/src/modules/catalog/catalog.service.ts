@@ -31,24 +31,30 @@ export async function decorateVideos(ctx: AppContext, videos: VideoWithCreator[]
   );
 }
 
+const TRENDING_WINDOW = 500;
+
 /** Video ids ordered by completed views in the last 7 days, then newest. Used by sort=trending and as AI fallback. */
 export async function trendingVideoIds(ctx: AppContext, limit: number, offset = 0, excludeId?: string): Promise<string[]> {
   const since = new Date(ctx.now().getTime() - 7 * 86_400_000);
-  const recent = await ctx.prisma.watchSession.groupBy({
-    by: ['videoId'],
-    where: { viewCounted: true, startedAt: { gte: since }, video: publicVideoWhere },
-    _count: { _all: true },
-    orderBy: { _count: { videoId: 'desc' } },
-    take: 500,
-  });
+  // Both queries run at once (one database round trip instead of two); the second takes enough rows to cover any overlap.
+  const [recent, rest] = await Promise.all([
+    ctx.prisma.watchSession.groupBy({
+      by: ['videoId'],
+      where: { viewCounted: true, startedAt: { gte: since }, video: publicVideoWhere },
+      _count: { _all: true },
+      orderBy: { _count: { videoId: 'desc' } },
+      take: TRENDING_WINDOW,
+    }),
+    ctx.prisma.video.findMany({
+      where: { ...publicVideoWhere, ...(excludeId ? { id: { not: excludeId } } : {}) },
+      orderBy: [{ viewsCount: 'desc' }, { createdAt: 'desc' }],
+      take: offset + limit + TRENDING_WINDOW,
+      select: { id: true },
+    }),
+  ]);
   const ranked = recent.map((r) => r.videoId).filter((id) => id !== excludeId);
-  const rest = await ctx.prisma.video.findMany({
-    where: { ...publicVideoWhere, id: { notIn: [...ranked, ...(excludeId ? [excludeId] : [])] } },
-    orderBy: [{ viewsCount: 'desc' }, { createdAt: 'desc' }],
-    take: offset + limit,
-    select: { id: true },
-  });
-  return [...ranked, ...rest.map((r) => r.id)].slice(offset, offset + limit);
+  const seen = new Set(ranked);
+  return [...ranked, ...rest.map((r) => r.id).filter((id) => !seen.has(id))].slice(offset, offset + limit);
 }
 
 export async function listVideos(ctx: AppContext, query: VideoListQuery, viewerId?: string): Promise<VideoListResponse> {

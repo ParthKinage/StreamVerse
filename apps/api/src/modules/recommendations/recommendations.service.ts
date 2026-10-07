@@ -30,6 +30,8 @@ export async function fallbackRecommendations(ctx: AppContext, limit: number, ex
 }
 
 export async function recommend(ctx: AppContext, query: { videoId?: string | undefined; limit: number }, viewerId?: string): Promise<RecommendationsResponse> {
+  // Without an AI service, loading 300 candidates and the viewer's history would be wasted work.
+  if (ctx.ai.enabled === false) return { items: await fallbackRecommendations(ctx, query.limit, query.videoId, viewerId), source: 'fallback' };
   try {
     const rows = await ctx.prisma.video.findMany({
       where: publicVideoWhere,
