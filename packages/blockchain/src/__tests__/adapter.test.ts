@@ -1,6 +1,6 @@
-import { Contract, Wallet, id as keccak, parseEther } from 'ethers';
+import { Contract, FeeData, JsonRpcProvider, Wallet, id as keccak, parseEther, parseUnits } from 'ethers';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { ChainAdapter } from '../adapter';
+import { ChainAdapter, cappedFeeData } from '../adapter';
 import { PAYMENT_ROUTER_ABI, STREAM_COIN_ABI } from '../abis';
 import { InsufficientGas, Reverted, RpcUnavailable } from '../errors';
 import { FlakyRpcProxy, fundWithStrm, hardhatAccount, startLocalChain, type LocalChain } from '../testing';
@@ -121,6 +121,16 @@ describe('ChainAdapter platform-run wallets', () => {
     expect((await adapter.getEscrow(a)).escrow).toBe(parseEther('30'));
   });
 
+  it('offers a fee ceiling of base fee + 25% + tip instead of 2 x base fee + tip', async () => {
+    const plain = new JsonRpcProvider(chain.rpcUrl, chain.chainId, { staticNetwork: true });
+    const uncapped = await plain.getFeeData();
+    const result = await adapter.creditBatch([{ id: keccak('fee-cap'), viewer: a, amount: parseEther('1') }]);
+    const tx = await plain.getTransaction(result.txHash);
+    plain.destroy();
+    expect(tx?.maxFeePerGas).toBeDefined();
+    expect(tx!.maxFeePerGas! < uncapped.maxFeePerGas!).toBe(true);
+  });
+
   it('pays creator earnings to the creator address with the relayer paying gas', async () => {
     const creator = hardhatAccount(10).address;
     await adapter.settleBatch([{ id: keccak('payout-1'), viewer: a, creator, amount: parseEther('10') }]);
@@ -192,5 +202,22 @@ describe('Mutex', () => {
     await expect(b).rejects.toThrow('boom');
     await c;
     expect(order).toEqual([1, 2, 3]);
+  });
+});
+
+describe('fee ceiling', () => {
+  const gwei = (n: number) => parseUnits(String(n), 'gwei');
+
+  it('turns 2 x base + tip into base x 1.25 + tip (Amoy on 2026-10-07: 30 base, 25 tip)', () => {
+    const capped = cappedFeeData(new FeeData(gwei(55), gwei(85), gwei(25)), 25);
+    expect(capped.maxFeePerGas).toBe(gwei(62.5));
+    expect(capped.maxPriorityFeePerGas).toBe(gwei(25));
+    expect(capped.gasPrice).toBe(gwei(55));
+  });
+
+  it('leaves legacy (non EIP-1559) fee data alone and honours another headroom', () => {
+    const legacy = new FeeData(gwei(40), null, null);
+    expect(cappedFeeData(legacy, 25)).toBe(legacy);
+    expect(cappedFeeData(new FeeData(null, gwei(85), gwei(25)), 0).maxFeePerGas).toBe(gwei(55));
   });
 });

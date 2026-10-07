@@ -3,6 +3,7 @@ import { Reverted, RpcUnavailable, type SettlementItem } from '@tesor_gp/blockch
 import { DOMAIN_EVENTS } from '@tesor_gp/shared';
 import type { Prisma } from '@tesor_gp/database';
 import type { AppContext } from '../../context';
+import { sendAffordable } from '../../infra/affordable';
 import { fromWei, toWei } from '../common';
 
 export const DEFAULT_FEE_BPS = 1000;
@@ -167,9 +168,10 @@ export async function processSettlements(ctx: AppContext): Promise<{ settled: nu
       if (sendable.length === 0) return { settled: reconciled };
     }
 
-    const result = await chain.settleBatch(sendable.map(toItem));
-    await settleSetAsSettled(ctx, sendable, result.txHash);
-    return { settled: reconciled + sendable.length };
+    // When the relayer is short of gas, settle the oldest ones it can afford; the rest wait for the next run.
+    const { sent, result } = await sendAffordable(sendable, (batch) => chain.settleBatch(batch.map(toItem)));
+    await settleSetAsSettled(ctx, sent, result.txHash);
+    return { settled: reconciled + sent.length };
   } catch (err) {
     if (err instanceof RpcUnavailable || err instanceof Reverted || err instanceof Error) {
       // Already-recorded failures above are not double counted: only rows still PENDING get an attempt.

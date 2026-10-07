@@ -62,7 +62,8 @@ const schema = z
     /** Most coins one account can buy in 24 hours with the demo bank (built-in wallets). */
     TOPUP_DAILY_LIMIT_STRM: num(10000),
     /** Gas balance (in thousandths of the native coin) below which the admin page warns that the platform wallet is low. */
-    LOW_GAS_MILLI: num(20),
+    /** Warn below this many thousandths of the native coin (150 = 0.15): roughly what a full batch must hold up front. */
+    LOW_GAS_MILLI: num(150),
     /**
      * When the app is pointed at a different ledger (bank to chain, or a newly deployed contract), balances and
      * payments recorded for the old one no longer mean anything. true = clear them automatically at startup.
