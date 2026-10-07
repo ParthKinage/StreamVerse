@@ -62,6 +62,15 @@ describe('parseEnv', () => {
     expect(parseEnv({ ...base, LEDGER_RESET_ON_CHANGE: 'false' } as NodeJS.ProcessEnv).LEDGER_RESET_ON_CHANGE).toBe(false);
   });
 
+  it('accepts private keys exported without 0x and normalises them', () => {
+    const key = 'ab'.repeat(32);
+    const env = parseEnv({ ...base, SETTLEMENT_RELAYER_PRIVATE_KEY: key, WALLET_MASTER_SEED: ` ${key} ` } as NodeJS.ProcessEnv);
+    expect(env.SETTLEMENT_RELAYER_PRIVATE_KEY).toBe(`0x${key}`);
+    expect(env.WALLET_MASTER_SEED).toBe(`0x${key}`);
+    expect(() => parseEnv({ ...base, SETTLEMENT_RELAYER_PRIVATE_KEY: 'ab'.repeat(31) } as NodeJS.ProcessEnv)).toThrow(/64 hex characters/);
+    expect(() => parseEnv({ ...base, SETTLEMENT_RELAYER_PRIVATE_KEY: 'zz'.repeat(32) } as NodeJS.ProcessEnv)).toThrow(/SETTLEMENT_RELAYER_PRIVATE_KEY/);
+  });
+
   it('fails on unimplemented storage providers', () => {
     expect(() => parseEnv({ ...base, STORAGE_PROVIDER: 'ipfs' } as NodeJS.ProcessEnv)).toThrow(/not implemented/);
   });

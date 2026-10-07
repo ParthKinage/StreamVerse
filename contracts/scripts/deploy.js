@@ -17,7 +17,9 @@ async function main() {
   const withdrawDelaySec = Number(process.env.WITHDRAW_DELAY_SEC || 15 * 60);
   const rewardPool = ethers.parseEther(process.env.REWARD_POOL_STRM || '1000000');
 
-  const relayerKey = process.env.SETTLEMENT_RELAYER_PRIVATE_KEY;
+  // MetaMask exports keys without "0x"; accept both spellings.
+  const rawRelayerKey = process.env.SETTLEMENT_RELAYER_PRIVATE_KEY?.trim();
+  const relayerKey = rawRelayerKey && /^[0-9a-fA-F]{64}$/.test(rawRelayerKey) ? `0x${rawRelayerKey}` : rawRelayerKey;
   let relayerAddress;
   if (relayerKey && relayerKey.toLowerCase() !== ZERO_KEY) {
     relayerAddress = new ethers.Wallet(relayerKey).address;
