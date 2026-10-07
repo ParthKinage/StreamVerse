@@ -109,6 +109,11 @@ export async function runFfmpeg(ffmpegPath: string, args: string[], onTime?: (se
     const corrupt = /Invalid data|moov atom|could not find codec|Error while decoding|Invalid argument/i.test(res.stderr);
     throw new MediaError(corrupt ? 'The video could not be decoded; the file may be corrupt' : `Transcoding failed: ${detail || `ffmpeg exited with code ${res.code}`}`, corrupt);
   }
-  const rss = /maxrss=(\d+)\s*Ki?B/.exec(res.stderr);
+  return parseMaxRssKiB(res.stderr);
+}
+
+/** Reads `bench: maxrss=...` from FFmpeg's -benchmark output. Builds differ: "133620KiB" (Windows), "50036kB" (Ubuntu). */
+export function parseMaxRssKiB(stderr: string): number | undefined {
+  const rss = /maxrss=(\d+)\s*ki?b/i.exec(stderr);
   return rss ? Number(rss[1]) : undefined;
 }
