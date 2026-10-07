@@ -3,6 +3,7 @@ export {
   enqueueSettlement,
   getFeeBps,
   markSettlementSettled,
+  peekFeeBps,
   processBankSettlements,
   processSettlements,
   reconcile,

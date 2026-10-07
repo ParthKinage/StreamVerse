@@ -70,6 +70,8 @@ export const walletSummary = z.object({
   unsettledChargesWei: weiString,
   availableWei: weiString,
   creatorEarningsWei: weiString,
+  /** Coins bought or granted that are still being written to the blockchain (built-in wallets only). */
+  arrivingWei: weiString.default('0'),
 });
 export type WalletSummary = z.infer<typeof walletSummary>;
 
@@ -87,6 +89,9 @@ export type WalletTransaction = z.infer<typeof walletTransaction>;
 
 export const paymentsModeSchema = z.enum(['bank', 'chain']);
 export type PaymentsMode = z.infer<typeof paymentsModeSchema>;
+/** 'managed' = the platform gives every account a blockchain wallet and pays the gas; 'external' = users link MetaMask. */
+export const walletModeSchema = z.enum(['external', 'managed']);
+export type WalletMode = z.infer<typeof walletModeSchema>;
 
 export const bankAccountDto = z.object({ id: z.string(), name: z.string(), last4: z.string(), kind: z.string() });
 export type BankAccountDto = z.infer<typeof bankAccountDto>;
@@ -94,6 +99,12 @@ export type BankAccountDto = z.infer<typeof bankAccountDto>;
 export const configResponse = z.object({
   /** 'bank' = simulated bank wallet (default prototype mode), 'chain' = STRM tokens on a blockchain. */
   paymentsMode: paymentsModeSchema,
+  /** Only meaningful when paymentsMode is 'chain'. */
+  walletMode: walletModeSchema.default('external'),
+  /** Symbol of the money used to buy coins (built-in wallets), for example "₹". */
+  fiatSymbol: z.string().default(''),
+  /** Smallest creator payout the platform will send (built-in wallets). */
+  minPayoutWei: weiString.default('0'),
   currencyCode: z.string(),
   currencySymbol: z.string(),
   bankAccounts: z.array(bankAccountDto),
@@ -241,6 +252,10 @@ export const creatorEarnings = z.object({
   claimableWei: weiString,
   lifetimeEarnedWei: weiString,
   pendingSettlementWei: weiString,
+  /** Already paid out to the creator's wallet. */
+  paidOutWei: weiString.default('0'),
+  /** True while a payout the creator asked for is being written to the blockchain. */
+  payoutPending: z.boolean().default(false),
 });
 export type CreatorEarnings = z.infer<typeof creatorEarnings>;
 
@@ -379,3 +394,34 @@ export const adminSettlementDto = z.object({
   createdAt: isoDate,
 });
 export type AdminSettlementDto = z.infer<typeof adminSettlementDto>;
+
+/** What the platform has earned and what it is spending to run the built-in wallets. */
+export const adminRevenue = z.object({
+  paymentsMode: paymentsModeSchema,
+  walletMode: walletModeSchema,
+  feeBps: z.number(),
+  /** Total paid by viewers for videos (settled). */
+  grossSalesWei: weiString,
+  /** The platform's commission on those sales. */
+  platformFeesWei: weiString,
+  /** What creators earned from those sales. */
+  creatorEarningsWei: weiString,
+  /** Commission sitting in the contract, ready for the admin to withdraw. Null when the chain cannot be read. */
+  platformFeesOnChainWei: weiString.nullable(),
+  /** Coins sold to viewers. */
+  coinsSoldWei: weiString,
+  /** Coins given away as bonuses. */
+  bonusesWei: weiString,
+  /** Credits (purchases and bonuses) waiting to be written to the blockchain. */
+  pendingCredits: z.number(),
+  pendingSettlements: z.number(),
+  relayerAddress: z.string().nullable(),
+  /** Gas money left in the platform wallet, in wei of the chain's native coin. */
+  relayerGasWei: weiString.nullable(),
+  /** Coins left in the platform wallet to sell or give away. */
+  relayerCoinsWei: weiString.nullable(),
+  /** True when the platform wallet is nearly out of gas and needs topping up. */
+  lowGas: z.boolean(),
+  walletCount: z.number(),
+});
+export type AdminRevenue = z.infer<typeof adminRevenue>;

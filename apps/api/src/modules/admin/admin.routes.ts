@@ -6,6 +6,7 @@ import { requireAuth, requireRole } from '../../middleware/auth';
 import { notFound } from '../../middleware/errors';
 import { validate } from '../../middleware/validate';
 import { decodeCursor, encodeCursor, toWei, userToDto, videoInclude, videoToDto } from '../common';
+import { getRevenue } from '../managed/revenue';
 import { retrySettlement } from '../settlement';
 import { collectHealth } from '../ops';
 
@@ -90,6 +91,10 @@ export function adminRoutes(ctx: AppContext): Router {
     const ok = await retrySettlement(ctx, String(req.params.id));
     if (!ok) throw notFound('No failed settlement with this id');
     res.status(202).json({ queued: true });
+  });
+
+  router.get('/admin/revenue', ...guard, async (_req, res) => {
+    res.json(await getRevenue(ctx));
   });
 
   router.get('/admin/health', ...guard, async (_req, res) => {

@@ -46,6 +46,12 @@ export function useCreatorEarnings(enabled: boolean) {
   return useQuery({ queryKey: keys.creatorEarnings, queryFn: creatorApi.earnings, enabled, refetchOnWindowFocus: true, refetchInterval: 10_000 });
 }
 
+/** True when payments run on the blockchain and every account has a built-in wallet (no browser wallet, no gas). */
+export function useManagedMode(): boolean {
+  const { data } = useConfig();
+  return data?.paymentsMode === 'chain' && data.walletMode === 'managed';
+}
+
 /** True when the app runs on the simulated bank wallet (no blockchain, no browser wallet). */
 export function useBankMode(): boolean {
   const { data } = useConfig();

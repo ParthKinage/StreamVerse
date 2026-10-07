@@ -16,7 +16,9 @@ import { AppError, badRequest, conflict, forbidden, notFound } from '../../middl
 import { decodeCursor, encodeCursor, fromWei, toWei, userToDto, videoInclude, videoToDto } from '../common';
 import { decorateVideos } from '../catalog';
 import { enqueueTranscode } from '../media';
-import { claimableFor, getLifetimeEarned } from './earnings';
+import { isPayoutPending } from '../managed/payout';
+import { isManaged } from '../managed/wallets';
+import { claimableFor, getLifetimeEarned, getPaidOut } from './earnings';
 
 const MAX_PRICE_WEI = parseSTRM(String(MAX_VIDEO_PRICE_STRM));
 
@@ -152,10 +154,13 @@ export async function getEarnings(ctx: AppContext, userId: string): Promise<Crea
     where: { creatorId: profile.id, escrowAppliedAt: null, status: { in: ['PENDING', 'SETTLED'] } },
     _sum: { creatorEarningsSTRM: true },
   });
+  const managed = isManaged(ctx);
   return {
     claimableWei: weiToString(claimable),
     lifetimeEarnedWei: weiToString(await getLifetimeEarned(ctx, profile.id)),
     pendingSettlementWei: weiToString(pending._sum.creatorEarningsSTRM ? toWei(pending._sum.creatorEarningsSTRM) : 0n),
+    paidOutWei: weiToString(ctx.env.PAYMENTS_MODE === 'chain' && user.walletAddress ? await getPaidOut(ctx, user.walletAddress) : 0n),
+    payoutPending: managed ? await isPayoutPending(ctx, userId) : false,
   };
 }
 

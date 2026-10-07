@@ -10,6 +10,9 @@ import type { WalletState } from './walletMachine';
 
 const config: ConfigResponse = {
   paymentsMode: 'chain',
+  walletMode: 'external',
+  fiatSymbol: '₹',
+  minPayoutWei: '0',
   currencyCode: 'STRM',
   currencySymbol: '',
   bankAccounts: [],
@@ -63,7 +66,7 @@ function renderDialog(ui: ReactNode = <TopUpDialog onClose={vi.fn()} onDone={vi.
 }
 
 beforeEach(() => {
-  summary = { walletAddress: user.walletAddress, escrowWei: '0', pendingWithdrawalWei: '0', withdrawUnlockAt: null, unsettledChargesWei: '0', availableWei: '0', creatorEarningsWei: '0' };
+  summary = { walletAddress: user.walletAddress, escrowWei: '0', pendingWithdrawalWei: '0', withdrawUnlockAt: null, unsettledChargesWei: '0', availableWei: '0', creatorEarningsWei: '0', arrivingWei: '0' };
   chain.topUp.mockReset();
   chain.gas.mockReset().mockResolvedValue(1n);
   chain.balance.mockReset().mockResolvedValue(100n * 10n ** 18n);

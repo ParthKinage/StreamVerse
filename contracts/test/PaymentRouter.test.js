@@ -242,6 +242,86 @@ describe('PaymentRouter', () => {
     });
   });
 
+  describe('platform-run wallets (relayer credits and payouts)', () => {
+    const credit = (router, signer, items) =>
+      router.connect(signer).creditBatch(items.map(([i, v, a]) => ({ id: id(i), viewer: v.address ?? v, amount: a })));
+
+    async function fundedRelayer() {
+      const f = await loadFixture(deployFixture);
+      await f.token.transfer(f.relayer.address, E(1000));
+      await f.token.connect(f.relayer).approve(await f.router.getAddress(), ethers.MaxUint256);
+      return f;
+    }
+
+    it('credits several viewers in one transaction from the relayer balance', async () => {
+      const { token, router, relayer, viewer, viewer2 } = await fundedRelayer();
+      const tx = credit(router, relayer, [['c1', viewer, E(50)], ['c2', viewer2, E(20)], ['c3', viewer, E(5)]]);
+      await expect(tx).to.emit(router, 'Deposited').withArgs(viewer.address, relayer.address, E(50));
+      await expect(tx).to.emit(router, 'Credited').withArgs(id('c2'), viewer2.address, E(20));
+      expect(await router.escrow(viewer.address)).to.equal(E(55));
+      expect(await router.escrow(viewer2.address)).to.equal(E(20));
+      expect(await token.balanceOf(await router.getAddress())).to.equal(E(75));
+      expect(await token.balanceOf(relayer.address)).to.equal(E(925));
+      expect(await router.credited(id('c1'))).to.equal(true);
+    });
+
+    it('never credits the same id twice, within or across batches', async () => {
+      const { router, relayer, viewer } = await fundedRelayer();
+      await credit(router, relayer, [['c1', viewer, E(10)]]);
+      await expect(credit(router, relayer, [['c1', viewer, E(10)]])).to.be.revertedWithCustomError(router, 'AlreadyCredited').withArgs(id('c1'));
+      await expect(credit(router, relayer, [['c2', viewer, E(1)], ['c2', viewer, E(1)]])).to.be.revertedWithCustomError(router, 'AlreadyCredited');
+      expect(await router.escrow(viewer.address)).to.equal(E(10));
+    });
+
+    it('validates items, batch size, the role and the pause switch', async () => {
+      const { router, admin, relayer, viewer, other } = await fundedRelayer();
+      await expect(credit(router, relayer, [])).to.be.revertedWithCustomError(router, 'EmptyBatch');
+      await expect(credit(router, relayer, [['z', viewer, 0n]])).to.be.revertedWithCustomError(router, 'ZeroAmount');
+      await expect(credit(router, relayer, [['z', ethers.ZeroAddress, 1n]])).to.be.revertedWithCustomError(router, 'ZeroAddress');
+      const tooMany = Array.from({ length: 101 }, (_, i) => [`m${i}`, viewer, 1n]);
+      await expect(credit(router, relayer, tooMany)).to.be.revertedWithCustomError(router, 'BatchTooLarge').withArgs(101);
+      await expect(credit(router, other, [['z', viewer, 1n]])).to.be.revertedWithCustomError(router, 'AccessControlUnauthorizedAccount');
+      await router.connect(admin).pause();
+      await expect(credit(router, relayer, [['z', viewer, 1n]])).to.be.revertedWithCustomError(router, 'EnforcedPause');
+    });
+
+    it('reverts the whole batch when the relayer cannot pay for it', async () => {
+      const { router, relayer, viewer } = await fundedRelayer();
+      await expect(credit(router, relayer, [['big', viewer, E(1001)]])).to.be.reverted;
+      expect(await router.escrow(viewer.address)).to.equal(0n);
+      expect(await router.credited(id('big'))).to.equal(false);
+    });
+
+    it('pays a creator out to their own address without the creator sending a transaction', async () => {
+      const { token, router, relayer, viewer, creator, other } = await fundedRelayer();
+      await credit(router, relayer, [['c1', viewer, E(100)]]);
+      await settle(router, relayer, [['s1', viewer, creator, E(10)]]);
+      await expect(router.connect(other).claimEarningsFor(creator.address)).to.be.revertedWithCustomError(router, 'AccessControlUnauthorizedAccount');
+      const before = await token.balanceOf(relayer.address);
+      await expect(router.connect(relayer).claimEarningsFor(creator.address))
+        .to.emit(router, 'EarningsClaimed').withArgs(creator.address, E(9));
+      expect(await token.balanceOf(creator.address)).to.equal(E(9));
+      expect(await token.balanceOf(relayer.address)).to.equal(before);
+      expect(await router.creatorEarnings(creator.address)).to.equal(0n);
+      await expect(router.connect(relayer).claimEarningsFor(creator.address)).to.be.revertedWithCustomError(router, 'NothingToClaim');
+    });
+
+    it('stays solvent with credits, a 30% commission and payouts', async () => {
+      const { token, router, admin, relayer, viewer, creator, treasury } = await fundedRelayer();
+      await router.connect(admin).setFeeBps(3000);
+      await credit(router, relayer, [['c1', viewer, E(100)]]);
+      await expect(settle(router, relayer, [['s1', viewer, creator, E(10)]]))
+        .to.emit(router, 'Settled').withArgs(id('s1'), viewer.address, creator.address, E(10), E(3));
+      expect(await router.creatorEarnings(creator.address)).to.equal(E(7));
+      expect(await router.platformEarnings()).to.equal(E(3));
+      await router.connect(relayer).claimEarningsFor(creator.address);
+      await router.connect(admin).withdrawPlatformFees(treasury.address);
+      expect(await token.balanceOf(treasury.address)).to.equal(E(3));
+      expect(await token.balanceOf(await router.getAddress())).to.equal(await router.escrow(viewer.address));
+      expect(await router.escrow(viewer.address)).to.equal(E(90));
+    });
+  });
+
   describe('creator earnings and platform fees', () => {
     it('creator claims; a second claim reverts', async () => {
       const { token, router, relayer, viewer, creator } = await loadFixture(deployFixture);

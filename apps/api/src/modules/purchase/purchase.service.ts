@@ -6,6 +6,7 @@ import { fromWei, toWei } from '../common';
 import { publicVideoWhere } from '../catalog';
 import { enqueueSettlement, getFeeBps, settlementKeyFor } from '../settlement';
 import { getBalances } from '../wallet';
+import { ensureManagedWallet, isManaged } from '../managed/wallets';
 
 const PG_LOCK_NS = 7_340_002;
 
@@ -23,7 +24,11 @@ export async function purchaseVideo(ctx: AppContext, userId: string, videoId: st
   const price = toWei(video.priceSTRM);
   if (price === 0n || video.creator.userId === userId) throw badRequest('VALIDATION_ERROR', 'This video does not need to be bought');
 
-  if (ctx.env.PAYMENTS_MODE === 'chain') {
+  if (isManaged(ctx)) {
+    // Built-in wallets exist for everyone; create any that are missing (for example a creator who has not signed in since).
+    await ensureManagedWallet(ctx, userId);
+    if (!video.creator.user.walletAddress) await ensureManagedWallet(ctx, video.creator.userId);
+  } else if (ctx.env.PAYMENTS_MODE === 'chain') {
     const user = await ctx.prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { walletAddress: true } });
     if (!user.walletAddress) throw new AppError(402, 'WALLET_NOT_LINKED', 'Link your wallet to buy paid videos');
     if (!video.creator.user.walletAddress) throw new AppError(404, 'VIDEO_NOT_AVAILABLE', 'This creator cannot receive payments yet');

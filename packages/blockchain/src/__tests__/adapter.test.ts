@@ -98,6 +98,40 @@ describe('ChainAdapter settlement', () => {
   });
 });
 
+describe('ChainAdapter platform-run wallets', () => {
+  const a = hardhatAccount(8).address;
+  const b = hardhatAccount(9).address;
+
+  it('credits several accounts in one transaction and never twice', async () => {
+    const items = [
+      { id: keccak('credit-a'), viewer: a, amount: parseEther('30') },
+      { id: keccak('credit-b'), viewer: b, amount: parseEther('12') },
+    ];
+    await adapter.simulateCreditBatch(items);
+    const result = await adapter.creditBatch(items);
+    expect((await adapter.getEscrow(a)).escrow).toBe(parseEther('30'));
+    expect((await adapter.getEscrow(b)).escrow).toBe(parseEther('12'));
+    expect(await adapter.areCredited([keccak('credit-a'), keccak('credit-b'), keccak('never')])).toEqual([true, true, false]);
+    expect((await adapter.findCreditTx(keccak('credit-b'), 0))?.txHash).toBe(result.txHash);
+
+    const logs = await adapter.getLogs(result.blockNumber, result.blockNumber);
+    expect(logs.filter((l) => l.name === 'Deposited').map((l) => l.address)).toEqual([a.toLowerCase(), b.toLowerCase()]);
+
+    await expect(adapter.creditBatch(items)).rejects.toMatchObject({ name: 'Reverted', reason: 'AlreadyCredited' });
+    expect((await adapter.getEscrow(a)).escrow).toBe(parseEther('30'));
+  });
+
+  it('pays creator earnings to the creator address with the relayer paying gas', async () => {
+    const creator = hardhatAccount(10).address;
+    await adapter.settleBatch([{ id: keccak('payout-1'), viewer: a, creator, amount: parseEther('10') }]);
+    expect(await adapter.getCreatorEarnings(creator)).toBe(parseEther('9'));
+    await adapter.claimEarningsFor(creator);
+    expect(await adapter.getTokenBalance(creator)).toBe(parseEther('9'));
+    expect(await adapter.getCreatorEarnings(creator)).toBe(0n);
+    await expect(adapter.claimEarningsFor(creator)).rejects.toMatchObject({ name: 'Reverted', reason: 'NothingToClaim' });
+  });
+});
+
 describe('ChainAdapter failure handling', () => {
   it('reports RpcUnavailable when the node is down, then recovers', async () => {
     const proxy = new FlakyRpcProxy(chain.rpcUrl);

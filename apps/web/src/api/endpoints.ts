@@ -16,6 +16,7 @@ import type {
   WalletSummary,
   WalletTransaction,
   AdminSettlementDto,
+  AdminRevenue,
   ReceivedPaymentsResponse,
   PurchaseResponse,
   UpdateVideoRequest,
@@ -55,6 +56,9 @@ export const walletApi = {
   unlink: () => api<{ user: UserDto }>('/wallet/link', { method: 'DELETE' }),
   summary: () => api<WalletSummary>('/wallet/summary'),
   transactions: (cursor?: string) => api<Page<WalletTransaction>>('/wallet/transactions', { query: { cursor } }),
+  /** Built-in wallets: buy coins with a (demo) bank payment. The coins arrive once the purchase is on the blockchain. */
+  buyCoins: (accountId: string, amountWei: string) =>
+    api<{ orderId: string; amountWei: string; summary: WalletSummary }>('/wallet/topup', { method: 'POST', body: { accountId, amountWei } }),
 };
 
 export const purchaseApi = {
@@ -111,6 +115,8 @@ export const creatorApi = {
   remove: (id: string) => api<void>(`/creator/videos/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   analytics: () => api<CreatorAnalytics>('/creator/analytics'),
   earnings: () => api<CreatorEarnings>('/creator/earnings'),
+  /** Built-in wallets: asks the platform to pay the creator's earnings out to their wallet. */
+  payout: () => api<{ amountWei: string }>('/creator/earnings/payout', { method: 'POST', body: {} }),
 };
 
 export const adminApi = {
@@ -120,4 +126,5 @@ export const adminApi = {
   settlements: (status?: string, cursor?: string) => api<Page<AdminSettlementDto>>('/admin/settlements', { query: { status, cursor } }),
   retrySettlement: (id: string) => api<{ queued: boolean }>(`/admin/settlements/${encodeURIComponent(id)}/retry`, { method: 'POST' }),
   health: () => api<HealthReport>('/admin/health'),
+  revenue: () => api<AdminRevenue>('/admin/revenue'),
 };

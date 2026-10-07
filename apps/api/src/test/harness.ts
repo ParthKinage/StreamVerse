@@ -48,6 +48,8 @@ export async function createHarness(options: { overrides?: ContextOverrides; env
     COOKIE_SECRET: 'test-cookie-secret-0123456789',
     PLAYBACK_SIGNING_SECRET: 'test-playback-secret-0123456789',
     PAYMENTS_MODE: 'chain',
+    // Most suites exercise linked browser wallets; the managed-wallet suite switches this on.
+    WALLET_MODE: 'external',
     CHAIN_ID: String(chain.chainId),
     RPC_URL: chain.rpcUrl,
     STREAMCOIN_TOKEN_ADDRESS: chain.streamCoin,
@@ -114,7 +116,7 @@ export async function createHarness(options: { overrides?: ContextOverrides; env
 
 export async function resetDb(ctx: AppContext): Promise<void> {
   await ctx.prisma.$executeRawUnsafe(
-    'TRUNCATE TABLE "User","RefreshToken","CreatorProfile","Video","WatchSession","WatchHeartbeat","PaymentSettlement","TokenReward","EscrowAccount","ChainEvent","ChainCursor","WatchlistItem","VideoLike" CASCADE',
+    'TRUNCATE TABLE "User","RefreshToken","CreatorProfile","Video","WatchSession","WatchHeartbeat","PaymentSettlement","TokenReward","EscrowAccount","ChainEvent","ChainCursor","WatchlistItem","VideoLike","LedgerEntry","VideoPurchase","ManagedWallet","CoinOrder","AppSetting" CASCADE',
   );
   await ctx.redis.flushdb();
   for (const q of [ctx.queues.settlement, ctx.queues.transcode]) await q.obliterate({ force: true }).catch(() => undefined);

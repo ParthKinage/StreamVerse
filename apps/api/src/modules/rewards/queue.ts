@@ -2,6 +2,11 @@ import type { AppContext } from '../../context';
 
 export async function enqueueReward(ctx: AppContext, rewardId: string): Promise<void> {
   try {
+    if (ctx.env.PAYMENTS_MODE === 'chain' && ctx.env.WALLET_MODE === 'managed') {
+      // Built-in wallets: bonuses travel with coin purchases in one batched transaction.
+      await ctx.queues.settlement.add('credits', {}, { delay: ctx.env.BATCH_WINDOW_MS, attempts: ctx.env.SETTLE_MAX_ATTEMPTS, backoff: { type: 'exponential', delay: 2000 } });
+      return;
+    }
     await ctx.queues.settlement.add(
       'reward',
       { rewardId },

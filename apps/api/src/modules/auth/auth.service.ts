@@ -6,6 +6,7 @@ import type { AppContext } from '../../context';
 import { signAccessToken } from '../../middleware/auth';
 import { AppError, conflict, unauthenticated } from '../../middleware/errors';
 import { isUniqueViolation, parseDurationMs, userToDto } from '../common';
+import { ensureManagedWallet, isManaged } from '../managed/wallets';
 
 const DUMMY_HASH = bcrypt.hashSync('not-a-real-password', 4);
 
@@ -16,7 +17,25 @@ export interface IssuedSession extends AuthResponse {
 
 const hashToken = (token: string): string => crypto.createHash('sha256').update(token).digest('hex');
 
-async function issue(ctx: AppContext, user: Parameters<typeof userToDto>[0]): Promise<IssuedSession> {
+type UserRow = Parameters<typeof userToDto>[0];
+
+/**
+ * Built-in wallets: every account gets its wallet the moment it signs up or signs in, so nobody has to set one up.
+ * A failure here must never block signing in; the wallet is created on the next request instead.
+ */
+async function withWallet<T extends UserRow>(ctx: AppContext, user: T): Promise<T> {
+  if (!isManaged(ctx)) return user;
+  try {
+    const address = await ensureManagedWallet(ctx, user.id);
+    return { ...user, walletAddress: address };
+  } catch (err) {
+    ctx.logger.warn({ err: (err as Error).message, userId: user.id }, 'could not prepare the built-in wallet');
+    return user;
+  }
+}
+
+async function issue(ctx: AppContext, account: UserRow): Promise<IssuedSession> {
+  const user = await withWallet(ctx, account);
   const refreshToken = crypto.randomBytes(32).toString('base64url');
   const refreshExpiresAt = new Date(ctx.now().getTime() + parseDurationMs(ctx.env.JWT_REFRESH_TTL));
   await ctx.prisma.refreshToken.create({
@@ -94,5 +113,5 @@ export async function me(ctx: AppContext, userId: string): Promise<AuthResponse[
     include: { creatorProfile: { select: { channelName: true } } },
   });
   if (!user) throw unauthenticated('User no longer exists');
-  return userToDto(user);
+  return userToDto(await withWallet(ctx, user));
 }

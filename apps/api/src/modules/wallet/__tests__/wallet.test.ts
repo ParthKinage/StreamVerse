@@ -127,6 +127,20 @@ describe('wallet linking', () => {
   });
 });
 
+describe('built-in wallet features', () => {
+  it('are switched off when users link their own wallets', async () => {
+    const user = await registerUser(h);
+    expect((await h.req().get('/api/v1/config')).body.walletMode).toBe('external');
+    expect(await h.ctx.prisma.managedWallet.count()).toBe(0);
+    const topUp = await authed(h, user).post('/api/v1/wallet/topup').send({ accountId: 'demo-savings', amountWei: parseEther('100').toString() });
+    expect(topUp.status).toBe(404);
+    expect(topUp.body.error.code).toBe('NOT_AVAILABLE_IN_THIS_MODE');
+    const payout = await authed(h, user).post('/api/v1/creator/earnings/payout');
+    expect(payout.status).toBe(404);
+    expect(payout.body.error.code).toBe('NOT_AVAILABLE_IN_THIS_MODE');
+  });
+});
+
 describe('welcome reward', () => {
   it('is created once on first link and credited into escrow without the user needing gas', async () => {
     const user = await registerUser(h);

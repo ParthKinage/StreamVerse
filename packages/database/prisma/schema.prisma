@@ -60,6 +60,8 @@ model User {
   refreshTokens  RefreshToken[]
   escrowAccount  EscrowAccount?
   ledgerEntries  LedgerEntry[]
+  managedWallet  ManagedWallet?
+  coinOrders     CoinOrder[]
   purchases      VideoPurchase[]
   watchlist      WatchlistItem[]
   likes          VideoLike[]
@@ -313,4 +315,44 @@ model VideoPurchase {
 
   @@index([userId, videoId, expiresAt])
   @@index([videoId])
+}
+
+/// Built-in wallet (WALLET_MODE=managed). The address is derived from WALLET_MASTER_SEED and this row's index,
+/// so no private key is ever stored in the database.
+model ManagedWallet {
+  index     Int      @id @default(autoincrement())
+  userId    String   @unique
+  address   String   @unique
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// Coins a viewer bought. The relayer credits them on-chain with this row's id, so a retry can never credit twice.
+model CoinOrder {
+  id            String       @id @default(uuid())
+  userId        String
+  walletAddress String
+  amountSTRM    Decimal      @db.Decimal(38, 18)
+  /// Who took the payment: "demo-bank" today, a real payment gateway later.
+  provider      String       @default("demo-bank")
+  bankAccountId String?
+  label         String
+  status        RewardStatus @default(PENDING)
+  txHash        String?
+  attempts      Int          @default(0)
+  lastError     String?
+  createdAt     DateTime     @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+  @@index([userId, createdAt])
+}
+
+/// Small key/value store for facts about this installation (for example which ledger the money tables belong to).
+model AppSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
 }

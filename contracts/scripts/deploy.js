@@ -12,7 +12,8 @@ async function main() {
   const { chainId } = await ethers.provider.getNetwork();
 
   const initialSupply = BigInt(process.env.STRM_INITIAL_SUPPLY || '100000000');
-  const feeBps = Number(process.env.FEE_BPS || 1000);
+  // Platform commission on every payment, in basis points (3000 = 30%). The contract caps it at 30%.
+  const feeBps = Number(process.env.FEE_BPS || 3000);
   const withdrawDelaySec = Number(process.env.WITHDRAW_DELAY_SEC || 15 * 60);
   const rewardPool = ethers.parseEther(process.env.REWARD_POOL_STRM || '1000000');
 
@@ -26,8 +27,18 @@ async function main() {
     throw new Error('Set SETTLEMENT_RELAYER_PRIVATE_KEY to a real key before deploying to a public network.');
   }
 
-  const token = await (await ethers.getContractFactory('StreamCoin')).deploy(initialSupply);
-  await token.waitForDeployment();
+  // REUSE_STREAMCOIN_ADDRESS lets you resume after a deploy that stopped half-way (the token is already on-chain).
+  const reuse = process.env.REUSE_STREAMCOIN_ADDRESS;
+  const factory = await ethers.getContractFactory('StreamCoin');
+  let token;
+  if (reuse) {
+    if ((await ethers.provider.getCode(reuse)) === '0x') throw new Error('REUSE_STREAMCOIN_ADDRESS has no contract code on this network.');
+    token = factory.attach(reuse);
+    console.log('Reusing existing StreamCoin at', reuse);
+  } else {
+    token = await factory.deploy(initialSupply);
+    await token.waitForDeployment();
+  }
   const router = await (await ethers.getContractFactory('PaymentRouter')).deploy(
     await token.getAddress(), deployer.address, feeBps, withdrawDelaySec,
   );

@@ -40,6 +40,28 @@ describe('parseEnv', () => {
     expect(env.PLATFORM_FEE_BPS).toBe(0);
   });
 
+  it('requires a secret wallet seed for built-in wallets on a public chain, and supplies a dev seed locally', () => {
+    const chain = { ...base, PAYMENTS_MODE: 'chain', CHAIN_ID: '80002' };
+    expect(() => parseEnv(chain as NodeJS.ProcessEnv)).toThrow(/WALLET_MASTER_SEED/);
+    expect(() => parseEnv({ ...chain, WALLET_MASTER_SEED: '0x' + '5a'.repeat(32) } as NodeJS.ProcessEnv)).toThrow(/WALLET_MASTER_SEED/);
+    expect(parseEnv({ ...chain, WALLET_MASTER_SEED: '0x' + 'ab'.repeat(32) } as NodeJS.ProcessEnv).WALLET_MODE).toBe('managed');
+    // Linking browser wallets needs no seed, and neither does the local development chain.
+    expect(parseEnv({ ...chain, WALLET_MODE: 'external' } as NodeJS.ProcessEnv).WALLET_MASTER_SEED).toBeUndefined();
+    expect(parseEnv({ ...base, PAYMENTS_MODE: 'chain', CHAIN_ID: '31337' } as NodeJS.ProcessEnv).WALLET_MASTER_SEED).toMatch(/^0x5a5a/);
+  });
+
+  it('keeps the public RPC URL separate from the server one', () => {
+    const env = parseEnv({ ...base, POLYGON_AMOY_RPC_URL: 'https://polygon-amoy.example/v2/secret-key' } as NodeJS.ProcessEnv);
+    expect(env.PUBLIC_RPC_URL).toBeUndefined();
+    expect(parseEnv({ ...base, PUBLIC_RPC_URL: 'https://public.example' } as NodeJS.ProcessEnv).PUBLIC_RPC_URL).toBe('https://public.example');
+  });
+
+  it('reads on/off settings from the usual spellings', () => {
+    expect(parseEnv({ ...base } as NodeJS.ProcessEnv).LEDGER_RESET_ON_CHANGE).toBe(false);
+    expect(parseEnv({ ...base, LEDGER_RESET_ON_CHANGE: 'true' } as NodeJS.ProcessEnv).LEDGER_RESET_ON_CHANGE).toBe(true);
+    expect(parseEnv({ ...base, LEDGER_RESET_ON_CHANGE: 'false' } as NodeJS.ProcessEnv).LEDGER_RESET_ON_CHANGE).toBe(false);
+  });
+
   it('fails on unimplemented storage providers', () => {
     expect(() => parseEnv({ ...base, STORAGE_PROVIDER: 's3' } as NodeJS.ProcessEnv)).toThrow(/not implemented/);
   });

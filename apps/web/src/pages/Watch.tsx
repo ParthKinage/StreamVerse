@@ -5,7 +5,7 @@ import { useEffect } from 'react';
 import { useAuth } from '../auth/AuthContext';
 import { ApiError, errorMessage } from '../api/client';
 import { catalogApi, purchaseApi, socialApi } from '../api/endpoints';
-import { keys, useBankMode, useConfig, useWalletSummary } from '../api/queries';
+import { keys, useBankMode, useConfig, useManagedMode, useWalletSummary } from '../api/queries';
 import { BankTopUpDialog } from '../bank/BankTopUpDialog';
 import { ErrorState, PageSpinner, VideoGridSkeleton } from '../components/States';
 import { useToast } from '../components/Toasts';
@@ -13,6 +13,7 @@ import { VideoCard } from '../components/VideoCard';
 import { formatViews, money, priceLabel, timeAgo, toBig } from '../lib/format';
 import { Player } from '../player/Player';
 import { usePlaybackSession } from '../player/usePlaybackSession';
+import { BuyCoinsDialog } from '../wallet/BuyCoinsDialog';
 import { TopUpDialog } from '../wallet/TopUpDialog';
 import { useWallet } from '../wallet/WalletContext';
 import NotFound from './NotFound';
@@ -33,7 +34,11 @@ export default function Watch(): JSX.Element {
   const videoRef = useRef<HTMLVideoElement>(null);
   const session = usePlaybackSession(id, videoRef);
   const bank = useBankMode();
+  const managed = useManagedMode();
   const { data: config } = useConfig();
+  // With the demo bank or built-in wallets there is nothing to set up before paying (and nothing to say until the
+  // app knows which mode it runs in).
+  const walletReady = bank || managed || Boolean(user?.walletAddress) || !config;
   const [topUp, setTopUp] = useState(false);
   const [unlocking, setUnlocking] = useState(false);
   const sessionPhase = session.state.phase;
@@ -68,10 +73,10 @@ export default function Watch(): JSX.Element {
   let blockedReason: string | null = null;
   if (paid && !isOwner) {
     if (!user) blockedReason = 'Log in to watch this video.';
-    else if (!bank && !user.walletAddress) blockedReason = 'Link a wallet to unlock paid videos.';
+    else if (!walletReady) blockedReason = 'Link a wallet to unlock paid videos.';
     else if (!video.accessUntil) blockedReason = 'Unlock this video to watch it.';
   }
-  const needsUnlock = paid && !isOwner && Boolean(user) && !video.accessUntil && (bank || Boolean(user?.walletAddress));
+  const needsUnlock = paid && !isOwner && Boolean(user) && !video.accessUntil && walletReady;
   const available = toBig(summary?.availableWei);
   const affordable = available >= price;
 
@@ -113,7 +118,7 @@ export default function Watch(): JSX.Element {
             </Link>
           </p>
         ) : null}
-        {blockedReason && user && !bank && !user.walletAddress ? (
+        {blockedReason && user && !walletReady ? (
           <p>
             <Link to="/wallet" className="btn primary">
               Set up wallet
@@ -137,7 +142,7 @@ export default function Watch(): JSX.Element {
                 </button>
               ) : (
                 <button type="button" className="btn primary" onClick={() => setTopUp(true)} data-testid="add-money-watch">
-                  {bank ? 'Add money' : 'Top up'}
+                  {bank ? 'Add money' : managed ? 'Buy coins' : 'Top up'}
                 </button>
               )}
             </div>
@@ -172,7 +177,7 @@ export default function Watch(): JSX.Element {
             ))}
           </ul>
         ) : null}
-        {wallet.mismatch ? (
+        {wallet.mismatch && !bank && !managed ? (
           <p className="notice" role="alert">
             The account selected in your wallet is not the one linked to your profile. Playback is billed to the linked wallet.
           </p>
@@ -195,7 +200,8 @@ export default function Watch(): JSX.Element {
         )}
       </aside>
       {topUp && bank ? <BankTopUpDialog onClose={() => setTopUp(false)} onDone={() => void refetchSummary()} /> : null}
-      {topUp && !bank ? <TopUpDialog onClose={() => setTopUp(false)} onDone={() => void refetchSummary()} /> : null}
+      {topUp && managed ? <BuyCoinsDialog onClose={() => setTopUp(false)} onDone={() => void refetchSummary()} /> : null}
+      {topUp && !bank && !managed ? <TopUpDialog onClose={() => setTopUp(false)} onDone={() => void refetchSummary()} /> : null}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-# Production image for the StreamVerse API + video worker (bank mode demo).
+# Production image for the StreamVerse API + video worker (demo bank or blockchain mode, chosen by PAYMENTS_MODE).
 FROM node:22-bookworm-slim
 
 RUN apt-get update \

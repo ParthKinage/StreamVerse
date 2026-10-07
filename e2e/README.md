@@ -19,6 +19,10 @@ Prerequisites: a reachable Postgres (`DATABASE_URL` host and credentials are reu
 | Chain outage mid-session | `08-chain-outage` |
 | Redis restart | `09-redis-restart` |
 | Withdrawal with chain time travel (runs last: it moves the chain clock) | `10-withdraw` |
+| Built-in wallets: sign up, buy coins, unlock, creator payout, no browser wallet (only with `E2E_WALLET_MODE=managed`) | `11-built-in-wallet` |
+
+One run uses one wallet mode. By default the stack runs with linked browser wallets and scenario 11 is skipped. Run
+`E2E_WALLET_MODE=managed npx playwright test` to start the stack with built-in wallets; then only scenario 11 runs.
 
 ## Browser and H.264
 

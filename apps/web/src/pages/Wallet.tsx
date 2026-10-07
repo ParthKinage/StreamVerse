@@ -4,12 +4,12 @@ import { formatSTRM } from '@tesor_gp/shared';
 import { useAuth } from '../auth/AuthContext';
 import { errorMessage } from '../api/client';
 import { walletApi } from '../api/endpoints';
-import { keys, useBankMode, useWalletSummary } from '../api/queries';
+import { keys, useBankMode, useConfig, useManagedMode, useWalletSummary } from '../api/queries';
 import { BankWallet } from '../bank/BankWallet';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { EarningsCard } from '../components/EarningsCard';
 import { Field } from '../components/Field';
-import { EmptyState, ErrorState, Skeleton } from '../components/States';
+import { EmptyState, ErrorState, PageSpinner, Skeleton } from '../components/States';
 import { useToast } from '../components/Toasts';
 import { useChainRefresh } from '../hooks/useChainRefresh';
 import { useNow } from '../hooks/useNow';
@@ -17,6 +17,7 @@ import { formatCountdown, shortAddress, strm, strmTitle, timeAgo, toBig } from '
 import { isUserRejection } from '../wallet/eip1193';
 import { gasBalance, getSigner, parseAmount, routerCall, tokenBalance, type RouterAction } from '../wallet/chainActions';
 import { ConnectGate } from '../wallet/ConnectGate';
+import { ManagedWallet } from '../wallet/ManagedWallet';
 import { TopUpDialog } from '../wallet/TopUpDialog';
 import { useWallet } from '../wallet/WalletContext';
 
@@ -279,5 +280,11 @@ function ChainWalletPage(): JSX.Element {
 }
 
 export default function WalletPage(): JSX.Element {
-  return useBankMode() ? <BankWallet /> : <ChainWalletPage />;
+  const { isPending } = useConfig();
+  const bank = useBankMode();
+  const managed = useManagedMode();
+  // Until the app knows which kind of wallet it runs, show nothing wallet-specific (no "install a wallet" flash).
+  if (isPending) return <PageSpinner label="Loading wallet" />;
+  if (bank) return <BankWallet />;
+  return managed ? <ManagedWallet /> : <ChainWalletPage />;
 }

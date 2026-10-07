@@ -6,6 +6,9 @@ import { Contract, JsonRpcProvider, Network, Wallet, formatEther, parseEther } f
 import { PAYMENT_ROUTER_ABI, STREAM_COIN_ABI } from '@tesor_gp/blockchain/abis';
 import { makeClip, startStack, type Stack } from './stack';
 
+/** True when the suite runs against built-in wallets (E2E_WALLET_MODE=managed) instead of linked browser wallets. */
+export const MANAGED = process.env.E2E_WALLET_MODE === 'managed';
+
 export interface Account {
   id: string;
   email: string;
@@ -67,8 +70,13 @@ export class Platform {
     const username = this.uniq(options.prefix ?? 'user');
     const email = `${username}@e2e.test`;
     const password = 'Passw0rd!123';
-    const reg = await this.api<{ accessToken: string; user: { id: string } }>('/auth/register', { body: { email, username, password } });
+    const reg = await this.api<{ accessToken: string; user: { id: string; walletAddress: string | null } }>('/auth/register', { body: { email, username, password } });
     expect(reg.status, JSON.stringify(reg.body)).toBe(201);
+    if (MANAGED) {
+      // Built-in wallets: the platform already made the wallet; there is no key to hold, nothing to link and no gas to fund.
+      expect(reg.body.user.walletAddress, 'sign-up should return the built-in wallet').toMatch(/^0x[0-9a-f]{40}$/);
+      return { id: reg.body.user.id, email, username, password, token: reg.body.accessToken, key: '', address: reg.body.user.walletAddress as string };
+    }
     const key = this.stack.accountKey(this.nextAccount++);
     const w = this.wallet(key);
     const acct: Account = { id: reg.body.user.id, email, username, password, token: reg.body.accessToken, key, address: w.address };
@@ -285,7 +293,17 @@ export interface PageHelpers {
   unlock(page: Page): Promise<void>;
 }
 
-export const test = base.extend<{ platform: Platform; catalog: Catalog; helpers: PageHelpers }, { stack: Stack; platformW: Platform; catalogW: Catalog }>({
+export const test = base.extend<{ platform: Platform; catalog: Catalog; helpers: PageHelpers; modeGuard: void }, { stack: Stack; platformW: Platform; catalogW: Catalog }>({
+  // Each run uses one wallet mode: built-in wallet scenarios only run with E2E_WALLET_MODE=managed, the rest without it.
+  modeGuard: [
+    // eslint-disable-next-line no-empty-pattern
+    async ({}, use, testInfo) => {
+      const forManaged = /built-in/.test(testInfo.file);
+      testInfo.skip(forManaged !== MANAGED, forManaged ? 'needs E2E_WALLET_MODE=managed' : 'not for E2E_WALLET_MODE=managed');
+      await use();
+    },
+    { auto: true },
+  ],
   stack: [
     // eslint-disable-next-line no-empty-pattern
     async ({}, use) => {
