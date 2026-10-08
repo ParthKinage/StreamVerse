@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
 import Hls, { type LoadPolicy } from 'hls.js';
 import type { VideoDto } from '@tesor_gp/shared';
-import { formatDuration, rateLabel } from '../lib/format';
+import { formatDuration, costLabel } from '../lib/format';
 import { CostMeter } from './CostMeter';
 import { MAX_NETWORK_RETRIES, MAX_URL_REFRESHES, describeFailure, isTransientStatus, networkRetryDelayMs, problemFromVideo, sendCredentials, type PlaybackProblem } from './errors';
 import { readNumber, writeValue } from './storage';
@@ -300,7 +300,7 @@ export function Player({ video, session, videoRef, onRequestTopUp, topUpLabel = 
               </button>
               <p className="muted small">
                 {onAir ? 'Live now · ' : ''}
-                {rateLabel(video.ratePerMinuteWei)}
+                {costLabel(video)}
                 {!onAir && video.paidSeconds ? ` · ${formatDuration(video.paidSeconds)} already paid, free to rewatch` : ''}
               </p>
             </>

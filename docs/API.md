@@ -103,7 +103,7 @@ pay per piece exactly as for videos. Creator endpoints need a bearer token and a
 | Endpoint | Notes |
 |---|---|
 | `GET /live` | Streams on air now, as videos with `live: {streamId, status, startedAt, viewers}`, busiest first. Public; cacheable for 10 s when anonymous |
-| `POST /creator/live` `{title, description?, category?, tags?, ratePerMinuteWei?, saveAsVod? (true)}` | 201 stream `{id, videoId, status: CREATED, ...}` |
+| `POST /creator/live` `{title, description?, category?, tags?, priceWei? (50 by default, at most 1000, 0 = free), saveAsVod? (true)}` | 201 stream `{id, videoId, status: CREATED, priceWei, buyers, ...}`. Viewers pay `priceWei` once for permanent access to the stream and its recording |
 | `GET /creator/live`, `GET /creator/live/:id` | Own streams with `viewers`, `peakViewers`, `durationSeconds`, `earnedWei` (creator's share so far), `initSeq`, `nextIndex` |
 | `POST /creator/live/:id/start` `{codecs, width, height, bandwidth}` | Before sending, and after every reconnect: `CREATED -> STARTING`, or a new connection number (`initSeq`) if the stream already sent pieces. Returns where to carry on (`initSeq`, `nextIndex`). `409 INVALID_TRANSITION` once ended |
 | `POST /creator/live/:id/upload-urls` `{names}` | Up to 30 of `init_<n>.mp4`, `seg_<6 digits>.m4s`, `thumbnail.jpg`. Returns `{items: [{name, url, method: PUT, headers, viaApi}], expiresAt}`: signed storage URLs (10 minutes), or API paths on local storage (`viaApi: true`, send with the bearer token) |
@@ -112,6 +112,9 @@ pay per piece exactly as for videos. Creator endpoints need a bearer token and a
 | `POST /creator/live/:id/thumbnail` | After uploading `thumbnail.jpg` |
 | `POST /creator/live/:id/end` | `ENDING -> ENDED`; the recording becomes a published video, or is deleted when `saveAsVod` is false. A stream that never started is cancelled (`FAILED`) |
 | `POST /admin/live/:id/end` | Admin: ends any stream (`ENDED_BY_ADMIN`) |
+| `GET /live/:streamId/chat?after=<id>` | Public. The latest 50 messages, or up to 100 newer than `after` (oldest first): `{items: [{id, text, createdAt, user: {id, username}, fromCreator}], removed: [ids removed in the last 5 minutes], open}`. Cacheable for 2 s when anonymous |
+| `POST /live/:streamId/chat` `{text}` | 1 to 300 characters. Needs access (bought, free stream, creator or admin): otherwise `402 PURCHASE_REQUIRED`. `409 CHAT_CLOSED` once the stream has ended. 5 messages per 10 s per person (`429`) |
+| `DELETE /live/:streamId/chat/:messageId` | The stream's creator or an admin. 204 |
 
 While a stream is on air, `/playback/:session/master.m3u8` and `src/index.m3u8` are built from the database (no end
 tag); `src/init_<n>.mp4` is free; `src/seg_<n>.m4s` is charged like any piece.
@@ -120,8 +123,8 @@ tag); `src/init_<n>.mp4` is free; `src/seg_<n>.m4s` is charged like any piece.
 
 | Endpoint | Notes |
 |---|---|
-| `POST /videos/:id/purchase` | **Retired**: `410 NOT_AVAILABLE_IN_THIS_MODE`. Viewers pay per second while watching. Former behaviour: | Buys `ACCESS_HOURS` (default 48) of access to a paid video. Returns `{videoId, priceWei, accessUntil, alreadyUnlocked, availableWei}`. Charges nothing if access is already active. `402 INSUFFICIENT_BALANCE` (details: `requiredWei`, `availableWei`), `402 WALLET_NOT_LINKED` (chain mode), `400` for free or own videos. The price becomes a `PaymentSettlement` (no session), reserved from the balance immediately |
-| `POST /watch/sessions` `{videoId}` | 201 `{sessionId, endToken, manifestUrl, heartbeatIntervalSec, resumePositionSec, availableWei, free, ratePerMinuteWei, paidSeconds, accessUntil: null}`. Needs about a minute of balance (or the rest of the video) unless every remaining second is already paid: otherwise `402 INSUFFICIENT_BALANCE` (details: `requiredWei`, `availableWei`). `402 WALLET_NOT_LINKED` / `404 VIDEO_NOT_AVAILABLE` when a side cannot pay or be paid (linked-wallet chain mode). Free videos and a creator's own videos cost nothing. Ends any other open session of the user. Sets the playback cookie |
+| `POST /videos/:id/purchase` | Live streams and their recordings (videos with `accessPriceWei`): buys permanent access. Returns `{videoId, priceWei, accessUntil: null, alreadyUnlocked, availableWei}`; buying again charges nothing. `402 INSUFFICIENT_BALANCE` (details: `requiredWei`, `availableWei`), `402 WALLET_NOT_LINKED` (linked-wallet chain mode), `400` for free streams or your own. The price becomes a `PaymentSettlement`, reserved from the balance immediately. Other videos are paid per second while watching and answer `410 NOT_AVAILABLE_IN_THIS_MODE` |
+| `POST /watch/sessions` `{videoId}` | 201 `{sessionId, endToken, manifestUrl, heartbeatIntervalSec, resumePositionSec, availableWei, free, ratePerMinuteWei, paidSeconds, accessUntil: null}`. Needs about a minute of balance (or the rest of the video) unless every remaining second is already paid: otherwise `402 INSUFFICIENT_BALANCE` (details: `requiredWei`, `availableWei`). `402 WALLET_NOT_LINKED` / `404 VIDEO_NOT_AVAILABLE` when a side cannot pay or be paid (linked-wallet chain mode). Free videos and a creator's own videos cost nothing. A live stream or its recording sold by one price needs access first: `402 PURCHASE_REQUIRED` (details: `priceWei`); with access it is free (`ratePerMinuteWei: 0`). Ends any other open session of the user. Sets the playback cookie |
 | `POST /watch/sessions/:id/heartbeat` `{sequence, playbackTime, state}` | `state` is `playing`, `paused` or `buffering`. Returns `{sequence, verifiedSeconds, chargedWei (this session so far), availableWei, secondsRemaining (new video the balance still covers), paidSeconds (of this video, all sessions), action: continue}`. Heartbeats never charge |
 | `POST /watch/sessions/:id/end` | Bearer, or `endToken` in the body (for `sendBeacon`). Counts a view when verified time is at least 30 s. The session's charges become one settlement |
 | `GET /me/history`, `GET /me/continue-watching` | |

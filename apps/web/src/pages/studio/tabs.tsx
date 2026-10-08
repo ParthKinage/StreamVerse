@@ -8,7 +8,7 @@ import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { Modal } from '../../components/Modal';
 import { EmptyState, ErrorState, Skeleton } from '../../components/States';
 import { useToast } from '../../components/Toasts';
-import { formatDuration, money, moneyTitle, timeAgo, rateLabel } from '../../lib/format';
+import { formatDuration, money, moneyTitle, timeAgo, costLabel } from '../../lib/format';
 import { VideoFields, validateVideoForm, weiToPriceInput, type VideoFormValues } from './VideoForm';
 
 const ALLOWED_EXT = ['.mp4', '.mov', '.mkv', '.webm', '.avi'];
@@ -327,7 +327,7 @@ export function VideosTab({ onUpload }: { onUpload(): void }): JSX.Element {
                 {v.processingStatus === 'PROCESSING' ? <progress value={v.transcodeProgress} max={100} aria-label={`Transcoding ${v.title}`} /> : null}
               </td>
               <td className="num" title={moneyTitle(v.ratePerMinuteWei)}>
-                {rateLabel(v.ratePerMinuteWei)}
+                {costLabel(v)}
               </td>
               <td>{timeAgo(v.createdAt)}</td>
               <td className="row-actions">

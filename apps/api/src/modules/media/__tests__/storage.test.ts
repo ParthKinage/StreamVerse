@@ -242,7 +242,7 @@ describe('playback from object storage', () => {
 describe('live streams on object storage', () => {
   it('uploads pieces straight to the bucket, plays them through signed redirects and saves the recording there', async () => {
     const owner = await creator();
-    const stream = await authed(h, owner).post('/api/v1/creator/live').send({ title: 'Bucket stream', ratePerMinuteWei: '0' });
+    const stream = await authed(h, owner).post('/api/v1/creator/live').send({ title: 'Bucket stream', priceWei: '0' });
     expect(stream.status).toBe(201);
     const id = stream.body.id as string;
     const videoId = stream.body.videoId as string;

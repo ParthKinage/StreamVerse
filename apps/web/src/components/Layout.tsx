@@ -4,6 +4,7 @@ import { useAuth } from '../auth/AuthContext';
 import { useWalletSummary } from '../api/queries';
 import { isBankMode, money, moneyTitle, shortAddress } from '../lib/format';
 import { useWallet } from '../wallet/WalletContext';
+import { useOnAir } from '../live/onAir';
 import { ErrorBoundary } from './ErrorBoundary';
 import { PageSpinner } from './States';
 
@@ -11,6 +12,7 @@ export function Layout(): JSX.Element {
   const { user, logout } = useAuth();
   const { state } = useWallet();
   const { data: summary } = useWalletSummary();
+  const onAir = useOnAir();
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
   const navigate = useNavigate();
@@ -57,6 +59,11 @@ export function Layout(): JSX.Element {
               <NavLink to="/studio" className={link} onClick={() => setOpen(false)}>
                 Studio
               </NavLink>
+              {onAir ? (
+                <Link to="/studio?tab=live" className="badge live" title="You are live. Open the stream controls." onClick={() => setOpen(false)} data-testid="nav-live">
+                  ● LIVE
+                </Link>
+              ) : null}
               {user.role === 'ADMIN' ? (
                 <NavLink to="/admin" className={link} onClick={() => setOpen(false)}>
                   Admin
@@ -105,7 +112,7 @@ export function Layout(): JSX.Element {
           </Suspense>
         </ErrorBoundary>
       </main>
-      <footer className="footer muted small">StreamVerse · pay once per video with StreamCoin</footer>
+      <footer className="footer muted small">StreamVerse · pay only for what you watch</footer>
     </div>
   );
 }

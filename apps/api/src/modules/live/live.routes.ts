@@ -1,5 +1,14 @@
 import express, { Router } from 'express';
-import { LIVE_FILE_NAME_RE, LIVE_SEGMENT_MAX_BYTES, commitLiveSegmentRequest, createLiveRequest, liveUploadUrlsRequest, startLiveRequest } from '@tesor_gp/shared';
+import {
+  LIVE_FILE_NAME_RE,
+  LIVE_SEGMENT_MAX_BYTES,
+  chatQuery,
+  commitLiveSegmentRequest,
+  createLiveRequest,
+  liveUploadUrlsRequest,
+  postChatRequest,
+  startLiveRequest,
+} from '@tesor_gp/shared';
 import type { AppContext } from '../../context';
 import { optionalAuth, requireAuth, requireRole, userId } from '../../middleware/auth';
 import { badRequest } from '../../middleware/errors';
@@ -7,6 +16,7 @@ import { publicWhenAnonymous } from '../../middleware/http-cache';
 import { createRateLimiter } from '../../middleware/rateLimit';
 import { validate } from '../../middleware/validate';
 import * as service from './live.service';
+import * as chat from './chat.service';
 
 export function liveRoutes(ctx: AppContext): Router {
   const router = Router();
@@ -17,6 +27,27 @@ export function liveRoutes(ctx: AppContext): Router {
   // ---------- viewers ----------
   router.get('/live', publicWhenAnonymous(10), optionalAuth(ctx), async (req, res) => {
     res.json(await service.listLiveNow(ctx, req.user?.id));
+  });
+
+  // ---------- chat ----------
+  // Polled every few seconds by every viewer; anonymous reads are the same for everyone, so the edge may serve them briefly.
+  router.get('/live/:streamId/chat', publicWhenAnonymous(2, 5), validate('query', chatQuery), async (req, res) => {
+    res.json(await chat.readChat(ctx, String(req.params.streamId), (req.query as { after?: number }).after));
+  });
+
+  const chatLimit = createRateLimiter(ctx, { name: 'live-chat', max: 5, windowMs: 10_000, keyByUser: true, store: 'memory' });
+  router.post('/live/:streamId/chat', auth, chatLimit, validate('body', postChatRequest), async (req, res) => {
+    const role = (await ctx.prisma.user.findUniqueOrThrow({ where: { id: userId(req) }, select: { role: true } })).role;
+    res.status(201).json(await chat.postChat(ctx, { id: userId(req), role }, String(req.params.streamId), (req.body as { text: string }).text));
+  });
+
+  router.delete('/live/:streamId/chat/:messageId', auth, async (req, res) => {
+    const messageId = Number(req.params.messageId);
+    if (!Number.isInteger(messageId) || messageId < 1) throw badRequest('VALIDATION_ERROR', 'Unknown message');
+    // The role is read from the database, so a demoted admin cannot moderate with an older login.
+    const role = (await ctx.prisma.user.findUniqueOrThrow({ where: { id: userId(req) }, select: { role: true } })).role;
+    await chat.removeChat(ctx, { id: userId(req), role }, String(req.params.streamId), messageId);
+    res.status(204).end();
   });
 
   // ---------- creators ----------

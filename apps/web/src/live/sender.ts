@@ -5,11 +5,14 @@ import {
   NullTarget,
   Output,
   QUALITY_MEDIUM,
+  VideoSample,
+  VideoSampleSource,
   getFirstEncodableAudioCodec,
   getFirstEncodableVideoCodec,
 } from 'mediabunny';
 import { LIVE_SEGMENT_MAX_MS, LIVE_SEGMENT_MIN_MS, LIVE_SEGMENT_TARGET_SEC, liveInitName, liveSegmentName, type LiveStreamDto, type LiveUploadUrlsResponse, type StartLiveRequest } from '@tesor_gp/shared';
 import { ApiError } from '../api/client';
+import type { Compositor } from './compositor';
 import { fragmentDurationMs, readTracks, type TrackInfo } from './fmp4';
 
 /** What the sender needs from the API (the real one is liveApi; tests pass a fake). */
@@ -38,6 +41,7 @@ const MAX_HEIGHT = 720;
 /** If more pieces than this are waiting, new ones are dropped so the stream stays close to live. */
 const MAX_WAITING = 6;
 const URL_BATCH = 15;
+const CONNECT_TIMEOUT_MS = 20_000;
 const UPLOAD_ATTEMPTS = 3;
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
@@ -95,7 +99,9 @@ export class LiveSender {
     private readonly api: SenderApi,
     private readonly onStatus: (s: SenderStatus) => void,
     /** Where a still for the thumbnail is taken from (the preview). */
-    private readonly preview?: () => HTMLVideoElement | null,
+    private readonly preview?: () => HTMLVideoElement | HTMLCanvasElement | OffscreenCanvas | null,
+    /** Screen and camera mixed into one picture; when given, the video comes from it instead of the media's video track. */
+    private readonly compositor?: Compositor,
   ) {}
 
   private update(patch: Partial<SenderStatus>): void {
@@ -111,11 +117,15 @@ export class LiveSender {
 
   async start(): Promise<void> {
     const video = this.media.getVideoTracks()[0];
-    if (!video) throw new BrowserCannotStream('Choose a camera or a screen to share.');
+    if (!video && !this.compositor) throw new BrowserCannotStream('Choose a camera or a screen to share.');
     const audio = this.media.getAudioTracks()[0];
-    const settings = video.getSettings();
-    const height = Math.min(settings.height ?? MAX_HEIGHT, MAX_HEIGHT);
-    const width = settings.width && settings.height ? Math.round((settings.width * height) / settings.height / 2) * 2 : 1280;
+    const settings = video?.getSettings() ?? {};
+    const height = this.compositor ? this.compositor.layout.height : Math.min(settings.height ?? MAX_HEIGHT, MAX_HEIGHT);
+    const width = this.compositor
+      ? this.compositor.layout.width
+      : settings.width && settings.height
+        ? Math.round((settings.width * height) / settings.height / 2) * 2
+        : 1280;
 
     const videoCodec = await getFirstEncodableVideoCodec(['avc', 'vp9', 'av1'], { width, height, quality: QUALITY_MEDIUM });
     if (!videoCodec) throw new BrowserCannotStream('This browser cannot encode video. Use a recent Chrome, Edge or Safari.');
@@ -141,16 +151,22 @@ export class LiveSender {
     });
     this.output = output;
 
-    const videoSource = new MediaStreamVideoTrackSource(video as MediaStreamVideoTrack, {
-      codec: videoCodec,
-      quality: QUALITY_MEDIUM,
-      // A key frame every 2 s lets a piece close at about 4 s.
-      keyFrameInterval: 2,
-      sizeChangeBehavior: 'contain',
-      ...((settings.height ?? 0) > MAX_HEIGHT ? { transform: { height: MAX_HEIGHT } } : {}),
-    });
-    output.addVideoTrack(videoSource);
-    videoSource.errorPromise.catch((err: unknown) => this.fail(`The video encoder stopped: ${(err as Error).message}`));
+    // A key frame every 2 s lets a piece close at about 4 s.
+    let mixed: VideoSampleSource | undefined;
+    if (this.compositor) {
+      mixed = new VideoSampleSource({ codec: videoCodec, quality: QUALITY_MEDIUM, keyFrameInterval: 2 });
+      output.addVideoTrack(mixed, { frameRate: 30 });
+    } else {
+      const videoSource = new MediaStreamVideoTrackSource(video as MediaStreamVideoTrack, {
+        codec: videoCodec,
+        quality: QUALITY_MEDIUM,
+        keyFrameInterval: 2,
+        sizeChangeBehavior: 'contain',
+        ...((settings.height ?? 0) > MAX_HEIGHT ? { transform: { height: MAX_HEIGHT } } : {}),
+      });
+      output.addVideoTrack(videoSource);
+      videoSource.errorPromise.catch((err: unknown) => this.fail(`The video encoder stopped: ${(err as Error).message}`));
+    }
     if (audio && audioCodec) {
       const audioSource = new MediaStreamAudioTrackSource(audio as MediaStreamAudioTrack, { codec: audioCodec, quality: QUALITY_MEDIUM });
       output.addAudioTrack(audioSource);
@@ -158,6 +174,34 @@ export class LiveSender {
     }
     this.lastFragmentAt = performance.now();
     await output.start();
+    if (this.compositor && mixed) this.feedFrom(this.compositor, mixed);
+    // The first piece needs a picture and, when there is one, sound. If either never arrives (a microphone muted by the
+    // system, a source that stopped), say so instead of showing "Connecting" for ever.
+    setTimeout(() => {
+      if (this.status.phase === 'connecting' && this.status.sent === 0) {
+        this.fail('Nothing has arrived from the camera, screen or microphone yet. Check they are not blocked or muted, then press Go live again.');
+      }
+    }, CONNECT_TIMEOUT_MS);
+  }
+
+  /** Hands the mixed picture to the encoder, dropping frames while it is busy rather than queueing them. */
+  private feedFrom(compositor: Compositor, source: VideoSampleSource): void {
+    let busy = false;
+    let first: number | undefined;
+    compositor.setSink((canvas, timestampSec) => {
+      if (busy || this.status.phase === 'error' || this.status.phase === 'stopped') return;
+      // The mixer may have run for a while for the preview; the stream starts at zero, like its sound.
+      first ??= timestampSec;
+      busy = true;
+      const sample = new VideoSample(canvas, { timestamp: timestampSec - first, duration: 1 / 30 });
+      source
+        .add(sample)
+        .catch((err: unknown) => this.fail(`The video encoder stopped: ${(err as Error).message}`))
+        .finally(() => {
+          sample.close();
+          busy = false;
+        });
+    });
   }
 
   /** Runs upload work strictly one after another, so pieces reach the playlist in order. */
@@ -242,12 +286,15 @@ export class LiveSender {
   }
 
   private async sendThumbnail(): Promise<void> {
-    const el = this.preview?.();
-    if (!el || !el.videoWidth) return;
+    const el = this.compositor?.snapshot() ?? this.preview?.();
+    if (!el) return;
+    const w = el instanceof HTMLVideoElement ? el.videoWidth : el.width;
+    const h = el instanceof HTMLVideoElement ? el.videoHeight : el.height;
+    if (!w || !h) return;
     try {
       const canvas = document.createElement('canvas');
       canvas.width = 640;
-      canvas.height = Math.round((640 * el.videoHeight) / el.videoWidth);
+      canvas.height = Math.round((640 * h) / w);
       canvas.getContext('2d')?.drawImage(el, 0, 0, canvas.width, canvas.height);
       const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, 'image/jpeg', 0.8));
       if (!blob) return;
@@ -264,6 +311,7 @@ export class LiveSender {
     const failed = this.status.phase === 'error';
     if (!failed) this.update({ phase: 'stopping' });
     try {
+      this.compositor?.setSink(null);
       if (!failed) await this.output?.finalize();
     } catch {
       // the encoder may already be gone (camera unplugged); what was sent stays sent

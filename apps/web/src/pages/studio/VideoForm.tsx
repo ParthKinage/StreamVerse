@@ -36,7 +36,22 @@ export function weiToPriceInput(wei: string): string {
   return formatSTRM(BigInt(wei || '0'), 18);
 }
 
-export function VideoFields({ values, onChange, errors, categories, children }: { values: VideoFormValues; onChange(v: VideoFormValues): void; errors: Record<string, string>; categories: string[]; children?: ReactNode }): JSX.Element {
+export function VideoFields({
+  values,
+  onChange,
+  errors,
+  categories,
+  children,
+  hideRate = false,
+}: {
+  values: VideoFormValues;
+  onChange(v: VideoFormValues): void;
+  errors: Record<string, string>;
+  categories: string[];
+  children?: ReactNode;
+  /** Live streams are sold by one price instead of a rate per minute. */
+  hideRate?: boolean;
+}): JSX.Element {
   const [touched] = useState(false);
   void touched;
   const set = (k: keyof VideoFormValues) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => onChange({ ...values, [k]: e.target.value });
@@ -58,14 +73,14 @@ export function VideoFields({ values, onChange, errors, categories, children }: 
         </select>
       </div>
       <Field label="Tags" value={values.tags} onChange={set('tags')} error={errors.tags} hint="Comma separated, up to 10" />
-      <Field
+      {hideRate ? null : <Field
         label={`Rate per minute (${moneyUnit()})`}
         inputMode="decimal"
         value={values.rate}
         onChange={set('rate')}
         error={errors.rate}
         hint={`Viewers pay this per minute, charged by the second they actually watch. Rewatching is free and skipped parts are never charged. 0 makes the video free. Maximum ${MAX_RATE_PER_MINUTE_STRM}.`}
-      />
+      />}
       {children}
     </>
   );

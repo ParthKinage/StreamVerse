@@ -31,6 +31,15 @@ export const LIVE_SEGMENT_MIN_MS = 200;
 export const LIVE_SEGMENT_MAX_MS = 10_000;
 export const LIVE_SEGMENT_MAX_BYTES = 8 * 1024 * 1024;
 export const LIVE_IDLE_TIMEOUT_SEC = 60;
+/**
+ * Live streams are sold by one price for permanent access to the stream and its recording (owner request), not per
+ * minute. 0 makes a stream free.
+ */
+export const DEFAULT_LIVE_PRICE_STRM = '50';
+export const MAX_ACCESS_PRICE_STRM = 1000;
+/** Access bought once never runs out; stored as an expiry far in the future. */
+export const PERMANENT_ACCESS_UNTIL = '9999-12-31T00:00:00.000Z';
+export const CHAT_MAX_LENGTH = 300;
 /** Names of the files a live stream is made of: init_<run>.mp4, seg_<index>.m4s and one thumbnail. */
 export const LIVE_FILE_NAME_RE = /^(init_\d{1,4}\.mp4|seg_\d{6}\.m4s|thumbnail\.jpg)$/;
 export const liveSegmentName = (index: number): string => `seg_${String(index).padStart(6, '0')}.m4s`;
@@ -99,6 +108,7 @@ export const ERROR_CODES = [
   'LIVE_ALREADY_ACTIVE',
   'LIVE_NOT_ACTIVE',
   'LIVE_SEGMENT_INVALID',
+  'CHAT_CLOSED',
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];
 

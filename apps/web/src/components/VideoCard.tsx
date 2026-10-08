@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import type { VideoDto } from '@tesor_gp/shared';
-import { formatDuration, formatViews, moneyTitle, rateLabel, timeAgo } from '../lib/format';
+import { formatDuration, formatViews, moneyTitle, costLabel, timeAgo } from '../lib/format';
 
 export function VideoCard({ video, progress }: { video: VideoDto; progress?: number | undefined }): JSX.Element {
   const onAir = video.live?.status === 'LIVE';
@@ -30,7 +30,7 @@ export function VideoCard({ video, progress }: { video: VideoDto; progress?: num
           {video.live?.status === 'ENDED' ? ' · recorded live' : ''}
         </p>
         <p className="rate" title={moneyTitle(video.ratePerMinuteWei)}>
-          {rateLabel(video.ratePerMinuteWei)}
+          {costLabel(video)}
         </p>
       </div>
     </article>

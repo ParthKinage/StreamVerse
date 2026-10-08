@@ -1,16 +1,17 @@
 import { Router } from 'express';
 import type { AppContext } from '../../context';
-import { requireAuth } from '../../middleware/auth';
-import { AppError } from '../../middleware/errors';
+import { requireAuth, userId } from '../../middleware/auth';
 import { createRateLimiter } from '../../middleware/rateLimit';
+import { purchaseAccess } from './purchase.service';
 
 export function purchaseRoutes(ctx: AppContext): Router {
   const router = Router();
   const auth = requireAuth(ctx);
   const limiter = createRateLimiter(ctx, { name: 'purchase', max: 30, keyByUser: true });
-  // Per-second billing replaced the one-time unlock: viewers pay for the seconds they are sent while watching.
-  router.post('/videos/:id/purchase', auth, limiter, () => {
-    throw new AppError(410, 'NOT_AVAILABLE_IN_THIS_MODE', 'Videos are now paid per second while you watch; just press play');
+  // Live streams (and their recordings) are bought once for permanent access; other videos are paid per second while
+  // watching and answer 410 here.
+  router.post('/videos/:id/purchase', auth, limiter, async (req, res) => {
+    res.json(await purchaseAccess(ctx, userId(req), String(req.params.id)));
   });
   return router;
 }

@@ -1,4 +1,5 @@
 import {
+  DEFAULT_LIVE_PRICE_STRM,
   DOMAIN_EVENTS,
   LIVE_SEGMENT_MAX_BYTES,
   splitFee,
@@ -17,13 +18,14 @@ import type { AppContext } from '../../context';
 import { AppError, conflict, forbidden, notFound } from '../../middleware/errors';
 import { fromWei, toWei, videoInclude } from '../common';
 import { decorateVideos } from '../catalog';
-import { requireCreatorProfile, validateRateWei } from '../creator/creator.service';
+import { requireCreatorProfile } from '../creator/creator.service';
+import { validateAccessPriceWei } from '../purchase/purchase.service';
 import { getFeeBps } from '../settlement';
 import { assertTransition, FINISHED_STATES, SENDING_STATES } from './lifecycle';
 import { liveManifestPath, liveRel, liveStoredPath, masterPlaylist, mediaPlaylist, writeLiveFile, type PlaylistSegment } from './media';
 
 type Tx = Prisma.TransactionClient;
-type StreamRow = Prisma.LiveStreamGetPayload<{ include: { video: { select: { title: true; ratePerMinuteSTRM: true } } } }>;
+type StreamRow = Prisma.LiveStreamGetPayload<{ include: { video: { select: { title: true; accessPriceSTRM: true } } } }>;
 
 /** Slack allowed between the pieces' total length and the wall-clock time since the stream started. */
 const CLOCK_SLACK_MS = 30_000;
@@ -37,7 +39,7 @@ async function lockStream(tx: Tx, id: string): Promise<void> {
 /** The stream, if the signed-in user owns it. */
 async function ownStream(ctx: AppContext, userId: string, id: string): Promise<StreamRow> {
   const profile = await requireCreatorProfile(ctx, userId);
-  const stream = await ctx.prisma.liveStream.findUnique({ where: { id }, include: { video: { select: { title: true, ratePerMinuteSTRM: true } } } });
+  const stream = await ctx.prisma.liveStream.findUnique({ where: { id }, include: { video: { select: { title: true, accessPriceSTRM: true } } } });
   if (!stream) throw notFound('Stream not found');
   if (stream.creatorId !== profile.id) throw forbidden('This is not your stream');
   return stream;
@@ -50,14 +52,14 @@ export async function viewerCount(ctx: AppContext, videoId: string): Promise<num
 }
 
 async function toDto(ctx: AppContext, s: StreamRow): Promise<LiveStreamDto> {
-  const [viewers, totals, last, paid, feeBps] = await Promise.all([
+  const [viewers, totals, last, sold, feeBps] = await Promise.all([
     viewerCount(ctx, s.videoId),
     ctx.prisma.liveSegment.aggregate({ where: { liveStreamId: s.id }, _sum: { durationMs: true } }),
     ctx.prisma.liveSegment.findFirst({ where: { liveStreamId: s.id }, orderBy: { index: 'desc' }, select: { index: true } }),
-    ctx.prisma.paidSegment.aggregate({ where: { videoId: s.videoId }, _sum: { amountSTRM: true } }),
+    ctx.prisma.videoPurchase.aggregate({ where: { videoId: s.videoId }, _sum: { amountSTRM: true }, _count: { _all: true } }),
     getFeeBps(ctx),
   ]);
-  const gross = paid._sum.amountSTRM ? toWei(paid._sum.amountSTRM) : 0n;
+  const gross = sold._sum.amountSTRM ? toWei(sold._sum.amountSTRM) : 0n;
   const peak = Math.max(s.peakViewers, viewers);
   if (peak > s.peakViewers) await ctx.prisma.liveStream.update({ where: { id: s.id }, data: { peakViewers: peak } });
   return {
@@ -65,7 +67,8 @@ async function toDto(ctx: AppContext, s: StreamRow): Promise<LiveStreamDto> {
     videoId: s.videoId,
     status: s.status,
     title: s.video.title,
-    ratePerMinuteWei: weiToString(toWei(s.video.ratePerMinuteSTRM)),
+    priceWei: weiToString(s.video.accessPriceSTRM ? toWei(s.video.accessPriceSTRM) : 0n),
+    buyers: sold._count._all,
     saveAsVod: s.saveAsVod,
     createdAt: s.createdAt.toISOString(),
     startedAt: s.startedAt?.toISOString() ?? null,
@@ -82,7 +85,7 @@ async function toDto(ctx: AppContext, s: StreamRow): Promise<LiveStreamDto> {
 
 export async function createStream(ctx: AppContext, userId: string, input: CreateLiveRequest): Promise<LiveStreamDto> {
   const profile = await requireCreatorProfile(ctx, userId);
-  const rate = validateRateWei(input.ratePerMinuteWei);
+  const price = validateAccessPriceWei(input.priceWei, DEFAULT_LIVE_PRICE_STRM);
   const stream = await ctx.prisma.$transaction(async (tx) => {
     // The video row holds what viewers see and pay for; it stays out of the catalog (PROCESSING) until the stream ends.
     const video = await tx.video.create({
@@ -93,14 +96,16 @@ export async function createStream(ctx: AppContext, userId: string, input: Creat
         tags: input.tags ?? [],
         creatorId: profile.id,
         originalFilePath: '',
-        ratePerMinuteSTRM: fromWei(rate),
+        // Sold by one price for permanent access; the rate per minute does not apply.
+        ratePerMinuteSTRM: '0',
+        accessPriceSTRM: fromWei(price),
         processingStatus: 'PROCESSING',
       },
     });
     await tx.video.update({ where: { id: video.id }, data: { hlsManifestPath: liveManifestPath(ctx, video.id) } });
     return tx.liveStream.create({
       data: { creatorId: profile.id, videoId: video.id, saveAsVod: input.saveAsVod ?? true },
-      include: { video: { select: { title: true, ratePerMinuteSTRM: true } } },
+      include: { video: { select: { title: true, accessPriceSTRM: true } } },
     });
   });
   ctx.events.emit(DOMAIN_EVENTS.STREAM_CREATED, { streamId: stream.id, videoId: stream.videoId });
@@ -117,7 +122,7 @@ export async function listOwnStreams(ctx: AppContext, userId: string): Promise<{
     where: { creatorId: profile.id },
     orderBy: { createdAt: 'desc' },
     take: 20,
-    include: { video: { select: { title: true, ratePerMinuteSTRM: true } } },
+    include: { video: { select: { title: true, accessPriceSTRM: true } } },
   });
   return { items: await Promise.all(rows.map((r) => toDto(ctx, r))) };
 }
@@ -147,7 +152,7 @@ export async function startSending(ctx: AppContext, userId: string, id: string, 
         startedAt: s.startedAt ?? ctx.now(),
         lastPieceAt: ctx.now(),
       },
-      include: { video: { select: { title: true, ratePerMinuteSTRM: true } } },
+      include: { video: { select: { title: true, accessPriceSTRM: true } } },
     });
   });
   return toDto(ctx, row);

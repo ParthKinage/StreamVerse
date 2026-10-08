@@ -95,3 +95,11 @@ export function priceLabel(wei: string): string {
 export function rateLabel(ratePerMinuteWei: string): string {
   return toBig(ratePerMinuteWei) === 0n ? 'Free' : `${money(ratePerMinuteWei)}/min`;
 }
+
+/** What a video costs: one price for permanent access (live streams and their recordings) or a rate per minute. */
+export function costLabel(video: { ratePerMinuteWei: string; accessPriceWei?: string | null | undefined }): string {
+  if (video.accessPriceWei !== null && video.accessPriceWei !== undefined) {
+    return toBig(video.accessPriceWei) === 0n ? 'Free' : `${money(video.accessPriceWei)} once`;
+  }
+  return rateLabel(video.ratePerMinuteWei);
+}

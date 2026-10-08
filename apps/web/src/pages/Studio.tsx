@@ -1,4 +1,6 @@
 import { Suspense, lazy, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { isOnAirNow } from '../live/onAir';
 import { useAuth } from '../auth/AuthContext';
 import { creatorApi } from '../api/endpoints';
 import { errorMessage } from '../api/client';
@@ -58,7 +60,9 @@ function BecomeCreator(): JSX.Element {
 
 export default function Studio(): JSX.Element {
   const { user } = useAuth();
-  const [tab, setTab] = useState<Tab>('videos');
+  const [params] = useSearchParams();
+  // Coming back to Studio while live (for example from the LIVE badge in the top bar) opens the Live tab.
+  const [tab, setTab] = useState<Tab>(() => (params.get('tab') === 'live' || isOnAirNow() ? 'live' : 'videos'));
   if (!user?.channelName) return <BecomeCreator />;
   const tabs: Array<[Tab, string]> = [
     ['videos', 'Videos'],

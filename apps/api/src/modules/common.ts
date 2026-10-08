@@ -40,7 +40,7 @@ export function thumbnailUrl(videoId: string, thumbnailPath: string | null): str
 
 export function videoToDto(
   v: VideoWithCreator,
-  extras: { liked?: boolean; inWatchlist?: boolean; likesCount?: number; paidSeconds?: number } = {},
+  extras: { liked?: boolean; inWatchlist?: boolean; likesCount?: number; paidSeconds?: number; hasAccess?: boolean } = {},
 ): VideoDto {
   return {
     id: v.id,
@@ -50,7 +50,8 @@ export function videoToDto(
     tags: v.tags,
     durationSeconds: v.durationSeconds,
     ratePerMinuteWei: toWei(v.ratePerMinuteSTRM).toString(),
-    priceWei: costForMs(v.durationSeconds * 1000, toWei(v.ratePerMinuteSTRM)).toString(),
+    priceWei: v.accessPriceSTRM !== null ? toWei(v.accessPriceSTRM).toString() : costForMs(v.durationSeconds * 1000, toWei(v.ratePerMinuteSTRM)).toString(),
+    accessPriceWei: v.accessPriceSTRM !== null ? toWei(v.accessPriceSTRM).toString() : null,
     accessUntil: null,
     thumbnailUrl: thumbnailUrl(v.id, v.thumbnailPath),
     viewsCount: v.viewsCount,
