@@ -1,14 +1,18 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { DEFAULT_RATE_PER_MINUTE_STRM, type LiveStreamDto } from '@tesor_gp/shared';
+import { DEFAULT_LIVE_PRICE_STRM, MAX_ACCESS_PRICE_STRM, parseSTRM, weiToString, type LiveStreamDto } from '@tesor_gp/shared';
 import { errorMessage } from '../../api/client';
 import { liveApi } from '../../api/endpoints';
 import { keys, useConfig } from '../../api/queries';
+import { Field } from '../../components/Field';
 import { ErrorState, Skeleton } from '../../components/States';
 import { useToast } from '../../components/Toasts';
-import { formatDuration, money, rateLabel, timeAgo } from '../../lib/format';
-import { BrowserCannotStream, LiveSender, canStreamFromBrowser, type SenderStatus } from '../../live/sender';
+import { formatDuration, money, moneyUnit, timeAgo } from '../../lib/format';
+import { canComposite } from '../../live/compositor';
+import { LiveChat } from '../../live/LiveChat';
+import { canStreamFromBrowser } from '../../live/sender';
+import { isSending, liveSession, useLiveSession, type Source } from '../../live/session';
 import { VideoFields, validateVideoForm, type VideoFormValues } from './VideoForm';
 
 const liveKey = ['creator', 'live'] as const;
@@ -23,10 +27,20 @@ const STATUS_TEXT: Record<string, string> = {
   FAILED: 'Not started',
 };
 
+export function validatePrice(raw: string): { error?: string; wei?: string } {
+  const price = raw.trim();
+  if (!/^\d+(\.\d{1,18})?$/.test(price)) return { error: 'Enter a price like 50 (or 0 for free)' };
+  const wei = parseSTRM(price);
+  if (wei > parseSTRM(String(MAX_ACCESS_PRICE_STRM))) return { error: `The price can be at most ${MAX_ACCESS_PRICE_STRM}` };
+  return { wei: weiToString(wei) };
+}
+
 function SetupForm({ onCreated }: { onCreated(): void }): JSX.Element {
   const { data: config } = useConfig();
   const toast = useToast();
-  const [values, setValues] = useState<VideoFormValues>({ title: '', description: '', category: 'General', tags: '', rate: DEFAULT_RATE_PER_MINUTE_STRM });
+  // The rate field of the shared form does not apply to streams; the price below replaces it.
+  const [values, setValues] = useState<VideoFormValues>({ title: '', description: '', category: 'General', tags: '', rate: '0' });
+  const [price, setPrice] = useState(DEFAULT_LIVE_PRICE_STRM);
   const [save, setSave] = useState(true);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [pending, setPending] = useState(false);
@@ -37,22 +51,17 @@ function SetupForm({ onCreated }: { onCreated(): void }): JSX.Element {
       noValidate
       onSubmit={(e) => {
         e.preventDefault();
-        const v = validateVideoForm(values, config ? Number(BigInt(config.maxRatePerMinuteWei) / 10n ** 18n) : undefined);
-        setErrors(v.errors);
-        if (Object.keys(v.errors).length) return;
+        const v = validateVideoForm(values);
+        const p = validatePrice(price);
+        const all = { ...v.errors, ...(p.error ? { price: p.error } : {}) };
+        setErrors(all);
+        if (Object.keys(all).length || p.wei === undefined) return;
         setPending(true);
         setServerError(null);
         liveApi
-          .create({
-            title: values.title.trim(),
-            description: values.description.trim(),
-            category: values.category,
-            tags: v.tags ?? [],
-            saveAsVod: save,
-            ...(v.rateWei !== undefined ? { ratePerMinuteWei: v.rateWei } : {}),
-          })
+          .create({ title: values.title.trim(), description: values.description.trim(), category: values.category, tags: v.tags ?? [], saveAsVod: save, priceWei: p.wei })
           .then(() => {
-            toast.success('Your stream is set up. Choose a camera or screen, then go live.');
+            toast.success('Your stream is set up. Choose what to show, then go live.');
             onCreated();
           })
           .catch((err) => setServerError(errorMessage(err)))
@@ -60,7 +69,15 @@ function SetupForm({ onCreated }: { onCreated(): void }): JSX.Element {
       }}
     >
       <h2>Set up a live stream</h2>
-      <VideoFields values={values} onChange={setValues} errors={errors} categories={config?.categories ?? ['General']}>
+      <VideoFields values={values} onChange={setValues} errors={errors} categories={config?.categories ?? ['General']} hideRate>
+        <Field
+          label={`Price to watch (${moneyUnit()})`}
+          inputMode="decimal"
+          value={price}
+          onChange={(e) => setPrice(e.target.value)}
+          error={errors.price}
+          hint={`Viewers pay this once and can watch the stream, and its recording, as often as they like. 0 makes it free. Maximum ${MAX_ACCESS_PRICE_STRM}.`}
+        />
         <label className="check">
           <input type="checkbox" checked={save} onChange={(e) => setSave(e.target.checked)} /> Keep the recording as a video when the stream ends
         </label>
@@ -91,30 +108,27 @@ function ObsHelp(): JSX.Element {
           cable (for example VB-Audio Virtual Cable), set it as the <em>Monitoring Device</em> in OBS (Settings, Audio, Advanced), turn on monitoring for
           those sources, and pick the cable as the microphone here.
         </li>
-        <li>Keep this tab open while you are live. Viewers are about 10 to 20 seconds behind.</li>
+        <li>Without OBS, choose <strong>Screen with camera</strong> to show your screen with your camera in the corner.</li>
+        <li>Viewers are about 10 to 20 seconds behind. You can switch tabs or use other apps; keep this page open until you end the stream.</li>
       </ol>
     </details>
   );
 }
 
-type Source = 'camera' | 'screen';
-
 function StreamControl({ stream }: { stream: LiveStreamDto }): JSX.Element {
   const qc = useQueryClient();
   const toast = useToast();
-  const previewRef = useRef<HTMLVideoElement>(null);
-  const mediaRef = useRef<MediaStream | null>(null);
-  const senderRef = useRef<LiveSender | null>(null);
-  const [source, setSource] = useState<Source>('camera');
+  const session = useLiveSession();
+  const [source, setSource] = useState<Source>(session.streamId === stream.id ? session.source : 'camera');
   const [cameras, setCameras] = useState<MediaDeviceInfo[]>([]);
   const [mics, setMics] = useState<MediaDeviceInfo[]>([]);
   const [cameraId, setCameraId] = useState('');
   const [micId, setMicId] = useState('');
-  const [hasMedia, setHasMedia] = useState(false);
-  const [mediaError, setMediaError] = useState<string | null>(null);
-  const [status, setStatus] = useState<SenderStatus | null>(null);
   const [ending, setEnding] = useState(false);
-  const sending = status?.phase === 'connecting' || status?.phase === 'live' || status?.phase === 'stopping';
+  const mine = session.streamId === stream.id;
+  const status = mine ? session.status : null;
+  const sending = mine && isSending(session);
+  const hasMedia = mine && session.hasMedia;
   const supported = canStreamFromBrowser();
 
   const stats = useQuery({ queryKey: [...liveKey, stream.id], queryFn: () => liveApi.get(stream.id), initialData: stream, refetchInterval: 5000 });
@@ -126,11 +140,9 @@ function StreamControl({ stream }: { stream: LiveStreamDto }): JSX.Element {
     if (phase) void refetchStats();
   }, [phase, refetchStats]);
 
-  const stopMedia = (): void => {
-    mediaRef.current?.getTracks().forEach((t) => t.stop());
-    mediaRef.current = null;
-    setHasMedia(false);
-  };
+  // The preview element changes with the source (a canvas for the mixed picture); the session keeps the media itself.
+  // React calls this with null when the element goes away, so leaving the page detaches it without stopping anything.
+  const previewRef = useCallback((el: HTMLVideoElement | HTMLCanvasElement | null) => liveSession.attachPreview(el), []);
 
   const listDevices = useCallback(async () => {
     const all = await navigator.mediaDevices.enumerateDevices();
@@ -138,72 +150,17 @@ function StreamControl({ stream }: { stream: LiveStreamDto }): JSX.Element {
     setMics(all.filter((d) => d.kind === 'audioinput'));
   }, []);
 
-  const acquire = useCallback(async () => {
-    setMediaError(null);
-    try {
-      const mic = micId ? { deviceId: { exact: micId } } : true;
-      let media: MediaStream;
-      if (source === 'screen') {
-        const screen = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 30 }, audio: true });
-        const voice = await navigator.mediaDevices.getUserMedia({ audio: mic }).catch(() => null);
-        // One audio track goes out: the microphone if there is one, otherwise the shared tab's sound.
-        const audio = voice?.getAudioTracks()[0] ?? screen.getAudioTracks()[0];
-        media = new MediaStream([...screen.getVideoTracks(), ...(audio ? [audio] : [])]);
-      } else {
-        media = await navigator.mediaDevices.getUserMedia({
-          video: { ...(cameraId ? { deviceId: { exact: cameraId } } : {}), width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
-          audio: mic,
-        });
-      }
-      mediaRef.current?.getTracks().forEach((t) => t.stop());
-      mediaRef.current = media;
-      if (previewRef.current) previewRef.current.srcObject = media;
-      setHasMedia(true);
-      await listDevices();
-    } catch (err) {
-      const name = (err as Error).name;
-      setMediaError(name === 'NotAllowedError' ? 'Allow access to your camera and microphone (or screen) to go live.' : `Could not open the ${source}: ${(err as Error).message}`);
-    }
-  }, [cameraId, micId, source, listDevices]);
-
-  // Closing the page while live would leave viewers hanging until the stream times out: ask first.
-  useEffect(() => {
-    if (!sending) return undefined;
-    const warn = (e: BeforeUnloadEvent): void => {
-      e.preventDefault();
-    };
-    window.addEventListener('beforeunload', warn);
-    return () => window.removeEventListener('beforeunload', warn);
-  }, [sending]);
-
-  useEffect(
-    () => () => {
-      void senderRef.current?.stop();
-      mediaRef.current?.getTracks().forEach((t) => t.stop());
-    },
-    [],
-  );
-
-  const goLive = async (): Promise<void> => {
-    const media = mediaRef.current;
-    if (!media) return;
-    const sender = new LiveSender(stream.id, media, liveApi, setStatus, () => previewRef.current);
-    senderRef.current = sender;
-    setStatus({ phase: 'connecting', sent: 0, waiting: 0, dropped: 0 });
-    try {
-      await sender.start();
-    } catch (err) {
-      setStatus({ phase: 'error', sent: 0, waiting: 0, dropped: 0, message: err instanceof BrowserCannotStream ? err.message : errorMessage(err) });
-    }
+  const acquire = async (): Promise<void> => {
+    await liveSession.acquire(stream.id, source, { cameraId, micId });
+    await listDevices();
   };
 
   const end = async (): Promise<void> => {
     setEnding(true);
     try {
-      await senderRef.current?.stop();
-      senderRef.current = null;
+      if (mine) await liveSession.stopSending();
       await liveApi.end(stream.id);
-      stopMedia();
+      if (mine) liveSession.release();
       toast.success(stream.saveAsVod ? 'Stream ended. The recording is now in your videos.' : 'Stream ended.');
       await qc.invalidateQueries({ queryKey: liveKey });
       await qc.invalidateQueries({ queryKey: keys.creatorVideos });
@@ -215,6 +172,7 @@ function StreamControl({ stream }: { stream: LiveStreamDto }): JSX.Element {
   };
 
   const onAir = s.status === 'LIVE';
+  const mixed = (mine ? session.source : source) === 'both';
   return (
     <section className="live-control" aria-label="Live stream">
       <div className="live-head">
@@ -224,7 +182,7 @@ function StreamControl({ stream }: { stream: LiveStreamDto }): JSX.Element {
         </span>
       </div>
       <p className="muted">
-        {rateLabel(s.ratePerMinuteWei)} · {s.saveAsVod ? 'the recording will be kept as a video' : 'the recording will not be kept'} ·{' '}
+        {toPriceText(s.priceWei)} · {s.saveAsVod ? 'the recording will be kept as a video' : 'the recording will not be kept'} ·{' '}
         <Link to={`/watch/${s.videoId}`} target="_blank" rel="noreferrer">
           Viewer page
         </Link>
@@ -237,6 +195,10 @@ function StreamControl({ stream }: { stream: LiveStreamDto }): JSX.Element {
         <div>
           <dt>Peak</dt>
           <dd>{s.peakViewers}</dd>
+        </div>
+        <div>
+          <dt>Bought access</dt>
+          <dd data-testid="live-buyers">{s.buyers}</dd>
         </div>
         <div>
           <dt>Streamed</dt>
@@ -253,82 +215,110 @@ function StreamControl({ stream }: { stream: LiveStreamDto }): JSX.Element {
           This browser cannot go live. Use a recent Chrome or Edge on a computer.
         </p>
       ) : (
-        <>
-          <video ref={previewRef} className="live-preview" muted autoPlay playsInline aria-label="Preview of what viewers see" />
-          <fieldset className="live-source" disabled={sending}>
-            <legend>What to stream</legend>
-            <label className="check">
-              <input type="radio" name="live-source" checked={source === 'camera'} onChange={() => setSource('camera')} /> Camera (or OBS Virtual Camera)
-            </label>
-            <label className="check">
-              <input type="radio" name="live-source" checked={source === 'screen'} onChange={() => setSource('screen')} /> Screen or window
-            </label>
-            {source === 'camera' && cameras.length ? (
-              <div className="field">
-                <label htmlFor="live-camera">Camera</label>
-                <select id="live-camera" value={cameraId} onChange={(e) => setCameraId(e.target.value)}>
-                  <option value="">Default camera</option>
-                  {cameras.map((c, i) => (
-                    <option key={c.deviceId || i} value={c.deviceId}>
-                      {c.label || `Camera ${i + 1}`}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            ) : null}
-            {mics.length ? (
-              <div className="field">
-                <label htmlFor="live-mic">Microphone</label>
-                <select id="live-mic" value={micId} onChange={(e) => setMicId(e.target.value)}>
-                  <option value="">Default microphone</option>
-                  {mics.map((m, i) => (
-                    <option key={m.deviceId || i} value={m.deviceId}>
-                      {m.label || `Microphone ${i + 1}`}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            ) : null}
-            <button type="button" className="btn" onClick={() => void acquire()} data-testid="live-preview">
-              {hasMedia ? 'Apply' : source === 'screen' ? 'Choose screen' : 'Turn on camera'}
-            </button>
-          </fieldset>
-          {mediaError ? (
-            <p className="form-error" role="alert">
-              {mediaError}
-            </p>
-          ) : null}
-          {status ? (
-            <p className={status.phase === 'error' ? 'form-error' : 'muted'} role="status" data-testid="sender-status">
-              {status.phase === 'connecting' ? 'Connecting…' : status.phase === 'live' ? `You are live · ${status.sent} ${status.sent === 1 ? 'piece' : 'pieces'} sent` : status.phase === 'stopping' ? 'Sending the last seconds…' : status.phase === 'error' ? status.message : 'Stopped'}
-              {status.phase !== 'error' && status.message ? ` · ${status.message}` : ''}
-            </p>
-          ) : onAir ? (
-            <p className="notice">You were live from another tab or before a reload. Choose your camera or screen and press Go live to carry on.</p>
-          ) : null}
-          <div className="actions">
-            {!sending ? (
-              <button type="button" className="btn primary" disabled={!hasMedia} onClick={() => void goLive()} data-testid="go-live">
-                {onAir ? 'Carry on streaming' : 'Go live'}
+        <div className="live-layout">
+          <div className="live-main">
+            {mixed ? (
+              <canvas ref={previewRef} className="live-preview" aria-label="Preview of what viewers see" />
+            ) : (
+              <video ref={previewRef} className="live-preview" muted autoPlay playsInline aria-label="Preview of what viewers see" />
+            )}
+            <fieldset className="live-source" disabled={sending}>
+              <legend>What to stream</legend>
+              <label className="check">
+                <input type="radio" name="live-source" checked={source === 'camera'} onChange={() => setSource('camera')} /> Camera (or OBS Virtual Camera)
+              </label>
+              <label className="check">
+                <input type="radio" name="live-source" checked={source === 'screen'} onChange={() => setSource('screen')} /> Screen or window
+              </label>
+              <label className="check">
+                <input type="radio" name="live-source" checked={source === 'both'} disabled={!canComposite()} onChange={() => setSource('both')} data-testid="source-both" /> Screen with
+                camera in the corner
+              </label>
+              {source !== 'screen' && cameras.length ? (
+                <div className="field">
+                  <label htmlFor="live-camera">Camera</label>
+                  <select id="live-camera" value={cameraId} onChange={(e) => setCameraId(e.target.value)}>
+                    <option value="">Default camera</option>
+                    {cameras.map((c, i) => (
+                      <option key={c.deviceId || i} value={c.deviceId}>
+                        {c.label || `Camera ${i + 1}`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
+              {mics.length ? (
+                <div className="field">
+                  <label htmlFor="live-mic">Microphone</label>
+                  <select id="live-mic" value={micId} onChange={(e) => setMicId(e.target.value)}>
+                    <option value="">Default microphone</option>
+                    {mics.map((m, i) => (
+                      <option key={m.deviceId || i} value={m.deviceId}>
+                        {m.label || `Microphone ${i + 1}`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
+              <button type="button" className="btn" onClick={() => void acquire()} data-testid="live-preview">
+                {hasMedia ? 'Apply' : source === 'camera' ? 'Turn on camera' : 'Choose screen'}
               </button>
+            </fieldset>
+            {mine && session.mediaError ? (
+              <p className="form-error" role="alert">
+                {session.mediaError}
+              </p>
             ) : null}
-            <button type="button" className="btn danger" disabled={ending} onClick={() => void end()} data-testid="end-live">
-              {ending ? 'Ending…' : s.status === 'CREATED' ? 'Cancel stream' : 'End stream'}
-            </button>
+            {status ? (
+              <p className={status.phase === 'error' ? 'form-error' : 'muted'} role="status" data-testid="sender-status">
+                {status.phase === 'connecting'
+                  ? 'Connecting…'
+                  : status.phase === 'live'
+                    ? `You are live · ${status.sent} ${status.sent === 1 ? 'piece' : 'pieces'} sent · you can switch tabs, the stream keeps going`
+                    : status.phase === 'stopping'
+                      ? 'Sending the last seconds…'
+                      : status.phase === 'error'
+                        ? status.message
+                        : 'Stopped'}
+                {status.phase !== 'error' && status.message ? ` · ${status.message}` : ''}
+              </p>
+            ) : onAir ? (
+              <p className="notice">You were live from another tab or before a reload. Choose what to stream and press Carry on streaming.</p>
+            ) : null}
+            <div className="actions">
+              {!sending ? (
+                <button type="button" className="btn primary" disabled={!hasMedia} onClick={() => void liveSession.goLive()} data-testid="go-live">
+                  {onAir ? 'Carry on streaming' : 'Go live'}
+                </button>
+              ) : null}
+              <button type="button" className="btn danger" disabled={ending} onClick={() => void end()} data-testid="end-live">
+                {ending ? 'Ending…' : s.status === 'CREATED' ? 'Cancel stream' : 'End stream'}
+              </button>
+            </div>
+            <ObsHelp />
           </div>
-          <ObsHelp />
-        </>
+          {s.status !== 'CREATED' ? <LiveChat streamId={s.id} live={s.status === 'LIVE' || s.status === 'STARTING'} postBlockedReason={null} canModerate /> : null}
+        </div>
       )}
     </section>
   );
 }
 
+function toPriceText(priceWei: string): string {
+  return BigInt(priceWei || '0') === 0n ? 'Free to watch' : `${money(priceWei)} to watch, once`;
+}
+
 export function LiveTab(): JSX.Element {
   const qc = useQueryClient();
+  const session = useLiveSession();
   const q = useQuery({ queryKey: liveKey, queryFn: liveApi.mine });
+  const active = q.data?.items.find((s) => ACTIVE.has(s.status));
+  // A stream that ended elsewhere (an admin, or the idle timeout) releases the camera and screen.
+  useEffect(() => {
+    if (q.data && session.streamId && session.streamId !== active?.id && !isSending(session)) liveSession.release();
+  }, [q.data, session, active?.id]);
   if (q.isPending) return <Skeleton className="thumb" />;
   if (q.isError) return <ErrorState message={errorMessage(q.error)} onRetry={() => void q.refetch()} />;
-  const active = q.data.items.find((s) => ACTIVE.has(s.status));
   const past = q.data.items.filter((s) => !ACTIVE.has(s.status));
   return (
     <div className="live-tab">
@@ -339,8 +329,8 @@ export function LiveTab(): JSX.Element {
           <ul className="plain-list">
             {past.map((s) => (
               <li key={s.id}>
-                <strong>{s.title}</strong> · {STATUS_TEXT[s.status]} · {formatDuration(s.durationSeconds)} · earned {money(s.earnedWei)} · peak {s.peakViewers} watching ·{' '}
-                {timeAgo(s.endedAt ?? s.createdAt)}
+                <strong>{s.title}</strong> · {STATUS_TEXT[s.status]} · {formatDuration(s.durationSeconds)} · {s.buyers} bought access · earned {money(s.earnedWei)} · peak{' '}
+                {s.peakViewers} watching · {timeAgo(s.endedAt ?? s.createdAt)}
               </li>
             ))}
           </ul>

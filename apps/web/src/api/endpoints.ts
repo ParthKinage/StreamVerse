@@ -20,6 +20,9 @@ import type {
   AdminRevenue,
   ReceivedPaymentsResponse,
   UpdateVideoRequest,
+  ChatMessageDto,
+  ChatResponse,
+  PurchaseResponse,
   CreateLiveRequest,
   LiveStreamDto,
   LiveUploadUrlsResponse,
@@ -88,6 +91,8 @@ export const catalogApi = {
   categories: () => api<{ categories: Array<{ name: string; count: number }> }>('/categories', { anonymous: true }),
   creator: (id: string) => api<CreatorProfileDto>(`/creators/${encodeURIComponent(id)}`),
   recommendations: (videoId?: string, limit = 12) => api<RecommendationsResponse>('/recommendations', { query: { videoId, limit } }),
+  /** Live streams and their recordings: one payment for permanent access. */
+  buyAccess: (id: string) => api<PurchaseResponse>(`/videos/${encodeURIComponent(id)}/purchase`, { method: 'POST', body: {} }),
 };
 
 export const socialApi = {
@@ -141,6 +146,10 @@ export const liveApi = {
     api<{ status: string; nextIndex: number }>(`/creator/live/${encodeURIComponent(id)}/segments`, { method: 'POST', body: b }),
   thumbnail: (id: string) => api<void>(`/creator/live/${encodeURIComponent(id)}/thumbnail`, { method: 'POST', body: {} }),
   end: (id: string) => api<LiveStreamDto>(`/creator/live/${encodeURIComponent(id)}/end`, { method: 'POST', body: {} }),
+  /** Chat is the same for everyone, so it is read without the login header (the edge may serve it for 2 s). */
+  chat: (streamId: string, after?: number) => api<ChatResponse>(`/live/${encodeURIComponent(streamId)}/chat`, { query: { after }, anonymous: true }),
+  postChat: (streamId: string, text: string) => api<ChatMessageDto>(`/live/${encodeURIComponent(streamId)}/chat`, { method: 'POST', body: { text } }),
+  removeChat: (streamId: string, messageId: number) => api<void>(`/live/${encodeURIComponent(streamId)}/chat/${messageId}`, { method: 'DELETE' }),
 };
 
 export const adminApi = {

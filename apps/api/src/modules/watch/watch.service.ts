@@ -23,6 +23,7 @@ import { signEndToken } from '../playback';
 import { enqueueSettlement, getFeeBps, settlementKeyFor } from '../settlement';
 import { ensureManagedWallet, isManaged } from '../managed/wallets';
 import { getBalances } from '../wallet';
+import { hasBoughtAccess } from '../purchase/purchase.service';
 import { paidSecondsFor } from './charges';
 
 type Tx = Prisma.TransactionClient;
@@ -109,8 +110,12 @@ export async function startSession(ctx: AppContext, userId: string, videoId: str
   if (!video) throw new AppError(404, 'VIDEO_NOT_AVAILABLE', 'This video is not available');
 
   const own = video.creator.userId === userId;
+  // Live streams and their recordings are bought once (spec change, owner request): watching them is then free.
+  if (video.accessPriceSTRM !== null && !own && toWei(video.accessPriceSTRM) > 0n && !(await hasBoughtAccess(ctx.prisma, userId, videoId, ctx.now()))) {
+    throw new AppError(402, 'PURCHASE_REQUIRED', 'Get access to watch this stream', { priceWei: weiToString(toWei(video.accessPriceSTRM)) });
+  }
   // The creator's own videos are free to them; everyone else pays the rate per second they are sent.
-  const rate = own ? 0n : toWei(video.ratePerMinuteSTRM);
+  const rate = own || video.accessPriceSTRM !== null ? 0n : toWei(video.ratePerMinuteSTRM);
   const free = rate === 0n;
 
   // Payments need wallets on both sides (moved here from the old unlock step).

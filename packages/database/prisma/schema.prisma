@@ -73,6 +73,7 @@ model User {
   managedWallet  ManagedWallet?
   coinOrders     CoinOrder[]
   purchases      VideoPurchase[]
+  chatMessages   LiveChatMessage[]
   paidSegments   PaidSegment[]
   watchlist      WatchlistItem[]
   likes          VideoLike[]
@@ -117,6 +118,8 @@ model Video {
   /** Legacy one-time price (kept for history). Viewers now pay ratePerMinuteSTRM per second watched. */
   priceSTRM         Decimal          @default(20) @db.Decimal(38, 18)
   ratePerMinuteSTRM Decimal          @default(1) @db.Decimal(38, 18)
+  /** One price for permanent access (live streams and their recordings). When set, the rate per minute does not apply. */
+  accessPriceSTRM   Decimal?         @db.Decimal(38, 18)
   category          String           @default("General")
   tags              String[]
   processingStatus  ProcessingStatus @default(PENDING)
@@ -421,6 +424,7 @@ model LiveStream {
   creator  CreatorProfile @relation(fields: [creatorId], references: [id])
   video    Video          @relation(fields: [videoId], references: [id])
   segments LiveSegment[]
+  chat     LiveChatMessage[]
 
   @@index([status, startedAt])
   @@index([creatorId, createdAt])
@@ -437,4 +441,20 @@ model LiveSegment {
   liveStream LiveStream @relation(fields: [liveStreamId], references: [id], onDelete: Cascade)
 
   @@id([liveStreamId, index])
+}
+
+/** A chat message under a live stream. Removed messages keep their row (removedAt) so polling clients can drop them. */
+model LiveChatMessage {
+  id           Int       @id @default(autoincrement())
+  liveStreamId String
+  userId       String
+  text         String
+  createdAt    DateTime  @default(now())
+  removedAt    DateTime?
+
+  liveStream LiveStream @relation(fields: [liveStreamId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([liveStreamId, id])
+  @@index([liveStreamId, removedAt])
 }

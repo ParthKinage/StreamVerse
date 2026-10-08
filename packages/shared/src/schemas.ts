@@ -2,6 +2,7 @@ import { z } from 'zod';
 import {
   ALLOWED_UPLOAD_MIME,
   CATEGORIES,
+  CHAT_MAX_LENGTH,
   LIVE_FILE_NAME_RE,
   LIVE_SEGMENT_MAX_MS,
   LIVE_SEGMENT_MIN_MS,
@@ -167,6 +168,10 @@ export const videoDto = z.object({
   ratePerMinuteWei: weiString,
   /** What watching the whole video once costs at that rate (rate x length). */
   priceWei: weiString,
+  /** Set for live streams and their recordings: one price for permanent access; the rate per minute does not apply. */
+  accessPriceWei: weiString.nullable().optional(),
+  /** The signed-in viewer may watch it: they bought access, it is free, or it is theirs. */
+  hasAccess: z.boolean().optional(),
   /** Seconds of this video the signed-in viewer has already paid for (free to watch again). */
   paidSeconds: z.number().optional(),
   /** Kept for older clients; always null since per-second billing replaced the timed unlock. */
@@ -308,7 +313,8 @@ export type CreatorEarnings = z.infer<typeof creatorEarnings>;
 export const purchaseResponse = z.object({
   videoId: z.string(),
   priceWei: weiString,
-  accessUntil: isoDate,
+  /** null: access never runs out. */
+  accessUntil: isoDate.nullable(),
   /** true when the viewer already had access, so nothing was charged. */
   alreadyUnlocked: z.boolean(),
   availableWei: weiString,
@@ -486,7 +492,8 @@ export const createLiveRequest = z.object({
   description: z.string().trim().max(MAX_VIDEO_DESCRIPTION).default(''),
   category: z.string().trim().min(1).max(40).default('General'),
   tags: tagsSchema.default([]),
-  ratePerMinuteWei: weiString.optional(),
+  /** One price for permanent access to the stream and its recording (default 50; 0 = free). */
+  priceWei: weiString.optional(),
   /** Keep the recording as a normal video afterwards. */
   saveAsVod: z.boolean().default(true),
 });
@@ -529,7 +536,10 @@ export const liveStreamDto = z.object({
   videoId: z.string(),
   status: liveStatusSchema,
   title: z.string(),
-  ratePerMinuteWei: weiString,
+  /** What viewers pay once to watch this stream and its recording. */
+  priceWei: weiString,
+  /** Viewers who have bought access so far. */
+  buyers: z.number(),
   saveAsVod: z.boolean(),
   createdAt: isoDate,
   startedAt: isoDate.nullable(),
@@ -540,10 +550,31 @@ export const liveStreamDto = z.object({
   peakViewers: z.number(),
   /** Seconds of the stream sent so far. */
   durationSeconds: z.number(),
-  /** The creator's share of what viewers have paid for this stream so far. */
+  /** The creator's share of what viewers have paid for this stream so far (access bought). */
   earnedWei: weiString,
   /** Where the sender carries on: the run number of its init piece and the next piece index. */
   initSeq: z.number(),
   nextIndex: z.number(),
 });
 export type LiveStreamDto = z.infer<typeof liveStreamDto>;
+
+export const chatMessageDto = z.object({
+  id: z.number(),
+  text: z.string(),
+  createdAt: isoDate,
+  user: z.object({ id: z.string(), username: z.string() }),
+  /** Written by the stream's creator. */
+  fromCreator: z.boolean(),
+});
+export type ChatMessageDto = z.infer<typeof chatMessageDto>;
+
+export const chatQuery = z.object({ after: z.coerce.number().int().min(0).optional() });
+export const chatResponse = z.object({
+  items: z.array(chatMessageDto),
+  /** Messages removed by the creator or an admin recently; clients drop them from what they show. */
+  removed: z.array(z.number()),
+  /** Whether new messages are accepted (the stream is on air). */
+  open: z.boolean(),
+});
+export type ChatResponse = z.infer<typeof chatResponse>;
+export const postChatRequest = z.object({ text: z.string().trim().min(1).max(CHAT_MAX_LENGTH) });

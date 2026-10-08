@@ -15,14 +15,19 @@ export const watchableVideoWhere: Prisma.VideoWhereInput = { OR: [publicVideoWhe
 export async function decorateVideos(ctx: AppContext, videos: VideoWithCreator[], viewerId?: string): Promise<VideoDto[]> {
   if (videos.length === 0) return [];
   const ids = videos.map((v) => v.id);
-  const [likeCounts, liked, watch, paid] = await Promise.all([
+  const sold = videos.filter((v) => v.accessPriceSTRM !== null).map((v) => v.id);
+  const [likeCounts, liked, watch, paid, bought] = await Promise.all([
     ctx.prisma.videoLike.groupBy({ by: ['videoId'], where: { videoId: { in: ids } }, _count: { _all: true } }),
     viewerId ? ctx.prisma.videoLike.findMany({ where: { userId: viewerId, videoId: { in: ids } }, select: { videoId: true } }) : Promise.resolve([]),
     viewerId ? ctx.prisma.watchlistItem.findMany({ where: { userId: viewerId, videoId: { in: ids } }, select: { videoId: true } }) : Promise.resolve([]),
     viewerId
       ? ctx.prisma.paidSegment.groupBy({ by: ['videoId'], where: { userId: viewerId, videoId: { in: ids } }, _sum: { durationMs: true } })
       : Promise.resolve([]),
+    viewerId && sold.length
+      ? ctx.prisma.videoPurchase.findMany({ where: { userId: viewerId, videoId: { in: sold }, expiresAt: { gt: ctx.now() } }, select: { videoId: true } })
+      : Promise.resolve([]),
   ]);
+  const boughtSet = new Set(bought.map((b) => b.videoId));
   const counts = new Map(likeCounts.map((c) => [c.videoId, c._count._all]));
   const likedSet = new Set(liked.map((l) => l.videoId));
   const watchSet = new Set(watch.map((w) => w.videoId));
@@ -30,7 +35,14 @@ export async function decorateVideos(ctx: AppContext, videos: VideoWithCreator[]
   return videos.map((v) =>
     videoToDto(v, {
       likesCount: counts.get(v.id) ?? 0,
-      ...(viewerId ? { liked: likedSet.has(v.id), inWatchlist: watchSet.has(v.id), paidSeconds: paidSeconds.get(v.id) ?? 0 } : {}),
+      ...(viewerId
+        ? {
+            liked: likedSet.has(v.id),
+            inWatchlist: watchSet.has(v.id),
+            paidSeconds: paidSeconds.get(v.id) ?? 0,
+            hasAccess: v.accessPriceSTRM === null || boughtSet.has(v.id) || v.accessPriceSTRM.isZero(),
+          }
+        : {}),
     }),
   );
 }

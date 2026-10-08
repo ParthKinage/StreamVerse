@@ -51,6 +51,15 @@
       ]
     },
     {
+      "source": "/api/v1/live/:streamId/chat",
+      "headers": [
+        {
+          "key": "x-vercel-enable-rewrite-caching",
+          "value": "1"
+        }
+      ]
+    },
+    {
       "source": "/api/v1/recommendations",
       "headers": [
         {
