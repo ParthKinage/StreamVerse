@@ -28,7 +28,9 @@ subtask(TASK_COMPILE_SOLIDITY_GET_SOLC_BUILD, async (args, hre, runSuper) => {
       compilerPath: require.resolve('solc/soljson.js'),
       isSolcJs: true,
       version: SOLC_VERSION,
-      longVersion: solc.version(),
+      // solc-js reports e.g. "0.8.28+commit.7893614a.Emscripten.clang"; the compiler (and the bytecode) is the same as the
+      // native one, and block explorers only accept the standard name when verifying source.
+      longVersion: solc.version().replace(/\.Emscripten\.clang$/, ''),
     };
   }
   return runSuper();
@@ -75,6 +77,32 @@ task('platform:withdraw-fees', 'Sends the commission earned so far to a treasury
     console.log(`Sent ${hre.ethers.formatEther(amount)} STRM to ${args.to} (tx ${receipt.hash})`);
   });
 
+task('verify:deployment', 'Publishes the source of the deployed StreamCoin and PaymentRouter on the block explorer (needs ETHERSCAN_API_KEY)').setAction(async (_args, hre) => {
+  const { chainId } = await hre.ethers.provider.getNetwork();
+  const file = path.join(__dirname, 'deployments', `${chainId}.json`);
+  if (!fs.existsSync(file)) throw new Error(`No deployment record for chain ${chainId} (${file}).`);
+  const d = JSON.parse(fs.readFileSync(file, 'utf8'));
+  // Constructor arguments exactly as scripts/deploy.js passed them.
+  const targets = [
+    { name: 'StreamCoin', address: d.streamCoin, constructorArguments: [d.initialSupply], contract: 'contracts/StreamCoin.sol:StreamCoin' },
+    {
+      name: 'PaymentRouter',
+      address: d.paymentRouter,
+      constructorArguments: [d.streamCoin, d.deployer, d.feeBps, d.withdrawDelaySec],
+      contract: 'contracts/PaymentRouter.sol:PaymentRouter',
+    },
+  ];
+  for (const t of targets) {
+    try {
+      await hre.run('verify:verify', { address: t.address, constructorArguments: t.constructorArguments, contract: t.contract });
+      console.log(`${t.name} verified: ${t.address}`);
+    } catch (err) {
+      if (/already verified/i.test(err.message)) console.log(`${t.name} was already verified: ${t.address}`);
+      else throw err;
+    }
+  }
+});
+
 /** @type import('hardhat/config').HardhatUserConfig */
 module.exports = {
   solidity: {
@@ -92,6 +120,9 @@ module.exports = {
       ...(process.env.AMOY_GAS_PRICE_GWEI ? { gasPrice: Math.round(Number(process.env.AMOY_GAS_PRICE_GWEI) * 1e9) } : {}),
     },
   },
+  // One Etherscan API key covers Polygonscan (Amoy and mainnet) through Etherscan's multichain API.
+  etherscan: { apiKey: process.env.ETHERSCAN_API_KEY || '' },
+  sourcify: { enabled: false },
   paths: { sources: './contracts', tests: './test', cache: './cache', artifacts: './artifacts' },
   mocha: { timeout: 120000 },
 };
