@@ -126,6 +126,12 @@ export const creatorApi = {
   unpublish: (id: string) => api<VideoDto>(`/creator/videos/${encodeURIComponent(id)}/unpublish`, { method: 'POST' }),
   retry: (id: string) => api<VideoDto>(`/creator/videos/${encodeURIComponent(id)}/retry`, { method: 'POST' }),
   remove: (id: string) => api<void>(`/creator/videos/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  /** The creator's own picture (JPEG, PNG or WebP, up to 5 MB) as the video's thumbnail. */
+  setThumbnail: (id: string, file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return api<VideoDto>(`/creator/videos/${encodeURIComponent(id)}/thumbnail`, { method: 'POST', formData: form });
+  },
   analytics: () => api<CreatorAnalytics>('/creator/analytics'),
   earnings: () => api<CreatorEarnings>('/creator/earnings'),
   /** Built-in wallets: asks the platform to pay the creator's earnings out to their wallet. */

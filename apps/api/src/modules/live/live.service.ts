@@ -20,6 +20,7 @@ import { fromWei, toWei, videoInclude } from '../common';
 import { decorateVideos } from '../catalog';
 import { requireCreatorProfile } from '../creator/creator.service';
 import { validateAccessPriceWei } from '../purchase/purchase.service';
+import { isCustomThumbnail } from '../creator/thumbnail';
 import { getFeeBps } from '../settlement';
 import { assertTransition, FINISHED_STATES, SENDING_STATES } from './lifecycle';
 import { liveManifestPath, liveRel, liveStoredPath, masterPlaylist, mediaPlaylist, writeLiveFile, type PlaylistSegment } from './media';
@@ -231,6 +232,9 @@ export async function setThumbnail(ctx: AppContext, userId: string, id: string):
   const s = await ownStream(ctx, userId, id);
   const stored = liveStoredPath(ctx, s.videoId, liveRel('thumbnail.jpg'));
   if (!(await ctx.storage.exists(stored))) throw new AppError(400, 'UPLOAD_NOT_FOUND', 'The thumbnail has not arrived yet');
+  // A picture the creator chose for the stream stays; the frame from the camera is only a fallback.
+  const current = await ctx.prisma.video.findUnique({ where: { id: s.videoId }, select: { thumbnailPath: true } });
+  if (isCustomThumbnail(current?.thumbnailPath)) return;
   await ctx.prisma.video.update({ where: { id: s.videoId }, data: { thumbnailPath: stored } });
 }
 

@@ -2,6 +2,7 @@ import type { Job } from 'bullmq';
 import { DOMAIN_EVENTS } from '@tesor_gp/shared';
 import type { AppContext } from '../../context';
 import type { TranscodeJobData, TranscodeJobResult } from '../../infra/queues';
+import { isCustomThumbnail } from '../creator/thumbnail';
 
 export const transcodeJobId = (videoId: string): string => `transcode-${videoId}`;
 const videoIdFromJob = (jobId: string): string | undefined => (jobId.startsWith('transcode-') ? jobId.slice('transcode-'.length) : undefined);
@@ -15,6 +16,9 @@ export async function enqueueTranscode(ctx: AppContext, videoId: string, inputPa
 }
 
 async function applyResult(ctx: AppContext, videoId: string, result: TranscodeJobResult): Promise<void> {
+  // A picture the creator chose beats the frame picked during processing.
+  const current = await ctx.prisma.video.findUnique({ where: { id: videoId }, select: { thumbnailPath: true } });
+  const keepCustom = isCustomThumbnail(current?.thumbnailPath);
   const updated = await ctx.prisma.video.updateMany({
     where: { id: videoId, processingStatus: { in: ['PENDING', 'PROCESSING'] } },
     data: {
@@ -22,7 +26,7 @@ async function applyResult(ctx: AppContext, videoId: string, result: TranscodeJo
       transcodeProgress: 100,
       failureReason: null,
       hlsManifestPath: result.manifestPath,
-      thumbnailPath: result.thumbnailPath,
+      ...(keepCustom ? {} : { thumbnailPath: result.thumbnailPath }),
       durationSeconds: Math.max(0, Math.round(result.durationSeconds)),
     },
   });

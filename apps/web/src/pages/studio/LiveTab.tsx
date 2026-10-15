@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { DEFAULT_LIVE_PRICE_STRM, MAX_ACCESS_PRICE_STRM, parseSTRM, weiToString, type LiveStreamDto } from '@tesor_gp/shared';
 import { errorMessage } from '../../api/client';
-import { liveApi } from '../../api/endpoints';
+import { creatorApi, liveApi } from '../../api/endpoints';
 import { keys, useConfig } from '../../api/queries';
 import { Field } from '../../components/Field';
 import { ErrorState, Skeleton } from '../../components/States';
@@ -13,6 +13,7 @@ import { canComposite } from '../../live/compositor';
 import { LiveChat } from '../../live/LiveChat';
 import { canStreamFromBrowser } from '../../live/sender';
 import { isSending, liveSession, useLiveSession, type Source } from '../../live/session';
+import { ThumbnailPicker } from './ThumbnailPicker';
 import { VideoFields, validateVideoForm, type VideoFormValues } from './VideoForm';
 
 const liveKey = ['creator', 'live'] as const;
@@ -45,6 +46,7 @@ function SetupForm({ onCreated }: { onCreated(): void }): JSX.Element {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [pending, setPending] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
+  const [thumb, setThumb] = useState<File | null>(null);
   return (
     <form
       className="form"
@@ -60,8 +62,11 @@ function SetupForm({ onCreated }: { onCreated(): void }): JSX.Element {
         setServerError(null);
         liveApi
           .create({ title: values.title.trim(), description: values.description.trim(), category: values.category, tags: v.tags ?? [], saveAsVod: save, priceWei: p.wei })
-          .then(() => {
+          .then(async (stream) => {
+            // The stream exists now; a thumbnail problem is reported but does not undo the set-up.
+            const thumbError = thumb ? await creatorApi.setThumbnail(stream.videoId, thumb).then(() => null, errorMessage) : null;
             toast.success('Your stream is set up. Choose what to show, then go live.');
+            if (thumbError) toast.error(`Your thumbnail was not saved: ${thumbError}`);
             onCreated();
           })
           .catch((err) => setServerError(errorMessage(err)))
@@ -78,6 +83,7 @@ function SetupForm({ onCreated }: { onCreated(): void }): JSX.Element {
           error={errors.price}
           hint={`Viewers pay this once and can watch the stream, and its recording, as often as they like. 0 makes it free. Maximum ${MAX_ACCESS_PRICE_STRM}.`}
         />
+        <ThumbnailPicker file={thumb} onChange={setThumb} disabled={pending} hint="Optional. Without one, a frame from your camera is used once you go live." />
         <label className="check">
           <input type="checkbox" checked={save} onChange={(e) => setSave(e.target.checked)} /> Keep the recording as a video when the stream ends
         </label>
