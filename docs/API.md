@@ -91,6 +91,7 @@ All require a bearer token; everything except `POST /creator/profile` also requi
 | `GET /creator/videos` | Includes `processingStatus` (`PENDING`, `PROCESSING`, `COMPLETED`, `FAILED`), `transcodeProgress`, `failureReason` |
 | `PATCH /creator/videos/:id` | Title, description, category, tags, `ratePerMinuteWei` |
 | `POST /creator/videos/:id/publish`, `/unpublish`, `/retry` | Publishing needs `COMPLETED`; retry re-queues a failed transcode |
+| `POST /creator/videos/:id/thumbnail` | Multipart, field `file`: a JPEG, PNG or WebP up to 5 MB, re-encoded to a JPEG (at most 1280 px wide) and used as the thumbnail. Works for any of the creator's videos, including streams and recordings; processing and live frames no longer replace it. `400 UPLOAD_INVALID` for anything that is not a readable image; `404` for someone else's video |
 | `DELETE /creator/videos/:id` | Archives |
 | `GET /creator/analytics` | Views, watch seconds, earnings by video and by day |
 | `GET /creator/earnings` | `claimableWei`, `lifetimeEarnedWei`, `pendingSettlementWei`. Claiming is the on-chain `claimEarnings()` |

@@ -19,6 +19,7 @@ import { validate } from '../../middleware/validate';
 import { probeMedia } from '../media';
 import * as service from './creator.service';
 import { signUploadToken, verifyUploadToken } from './upload-token';
+import { THUMBNAIL_MAX_BYTES, THUMBNAIL_MIME, setCustomThumbnail } from './thumbnail';
 
 /** Extra time after the upload URL expires to call /complete (a large file may finish uploading just in time). */
 const COMPLETE_GRACE_SEC = 3600;
@@ -131,6 +132,30 @@ export function creatorRoutes(ctx: AppContext): Router {
 
   router.patch('/creator/videos/:id', auth, validate('body', updateVideoRequest), async (req, res) => {
     res.json(await service.updateVideo(ctx, userId(req), String(req.params.id), req.body));
+  });
+
+  // The creator's own picture for a video (JPEG, PNG or WebP, up to 5 MB); it is re-encoded to a JPEG before use.
+  const thumbnailUpload = multer({
+    storage: multer.diskStorage({
+      destination: (_req, _file, cb) => cb(null, ctx.storage.uploadDir),
+      filename: (_req, _file, cb) => cb(null, `thumb-${crypto.randomUUID()}`),
+    }),
+    limits: { fileSize: THUMBNAIL_MAX_BYTES, files: 1 },
+    fileFilter: (_req, file, cb) => {
+      if (!(THUMBNAIL_MIME as readonly string[]).includes(file.mimetype)) return cb(badRequest('UPLOAD_INVALID', 'Use a JPEG, PNG or WebP image.'));
+      cb(null, true);
+    },
+  });
+  router.post('/creator/videos/:id/thumbnail', auth, thumbnailUpload.single('file'), async (req, res) => {
+    const file = req.file;
+    if (!file) throw badRequest('UPLOAD_INVALID', 'Attach an image in the "file" field');
+    let video;
+    try {
+      video = await setCustomThumbnail(ctx, userId(req), String(req.params.id), file.path);
+    } finally {
+      await ctx.storage.deleteFile(file.path).catch(() => undefined);
+    }
+    res.json(video);
   });
 
   router.post('/creator/videos/:id/publish', auth, async (req, res) => {

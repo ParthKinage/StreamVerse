@@ -9,6 +9,7 @@ import { Modal } from '../../components/Modal';
 import { EmptyState, ErrorState, Skeleton } from '../../components/States';
 import { useToast } from '../../components/Toasts';
 import { formatDuration, moneyTitle, timeAgo, costLabel } from '../../lib/format';
+import { ThumbnailPicker } from './ThumbnailPicker';
 import { VideoFields, validateVideoForm, weiToPriceInput, type VideoFormValues } from './VideoForm';
 
 const ALLOWED_EXT = ['.mp4', '.mov', '.mkv', '.webm', '.avi'];
@@ -69,6 +70,7 @@ export function UploadTab({ onUploaded }: { onUploaded(): void }): JSX.Element {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [progress, setProgress] = useState<number | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
+  const [thumb, setThumb] = useState<File | null>(null);
   const preview = useThumbnailPreview(file);
   const maxMb = config?.maxUploadMb ?? 1024;
 
@@ -103,16 +105,20 @@ export function UploadTab({ onUploaded }: { onUploaded(): void }): JSX.Element {
     setProgress(0);
     setServerError(null);
     try {
+      let video: VideoDto;
       if (config?.uploadMode === 'direct') {
-        await creatorApi.directUpload(file, fields, setProgress, ctl.signal);
+        video = await creatorApi.directUpload(file, fields, setProgress, ctl.signal);
       } else {
         const form = new FormData();
         for (const [k, val] of Object.entries(fields)) form.set(k, val);
         form.set('file', file);
-        await creatorApi.upload(form, setProgress, ctl.signal);
+        video = await creatorApi.upload(form, setProgress, ctl.signal);
       }
+      // The video is safely uploaded at this point; a thumbnail problem must not look like a failed upload.
+      const thumbError = thumb ? await creatorApi.setThumbnail(video.id, thumb).then(() => null, errorMessage) : null;
       await qc.invalidateQueries({ queryKey: keys.creatorVideos });
       toast.success('Upload complete. Transcoding has started.');
+      if (thumbError) toast.error(`Your thumbnail was not saved: ${thumbError} You can add it from Edit.`);
       onUploaded();
     } catch (err) {
       if ((err as Error).name === 'AbortError') toast.info('Upload cancelled');
@@ -154,7 +160,7 @@ export function UploadTab({ onUploaded }: { onUploaded(): void }): JSX.Element {
           {fileError}
         </p>
       ) : null}
-      {preview ? <img className="preview" src={preview} alt="Thumbnail preview" /> : null}
+      {file ? <ThumbnailPicker file={thumb} onChange={setThumb} current={preview} disabled={uploading} /> : null}
 
       <VideoFields values={values} onChange={setValues} errors={errors} categories={config?.categories ?? ['General']} />
 
@@ -203,6 +209,7 @@ function EditDialog({ video, onClose }: { video: VideoDto; onClose(): void }): J
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [pending, setPending] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
+  const [thumb, setThumb] = useState<File | null>(null);
 
   const save = async (): Promise<void> => {
     const v = validateVideoForm(values);
@@ -211,6 +218,7 @@ function EditDialog({ video, onClose }: { video: VideoDto; onClose(): void }): J
     setPending(true);
     setServerError(null);
     try {
+      if (thumb) await creatorApi.setThumbnail(video.id, thumb);
       await creatorApi.update(video.id, { title: values.title.trim(), description: values.description.trim(), category: values.category, tags: v.tags ?? [], ...(v.rateWei !== undefined ? { ratePerMinuteWei: v.rateWei } : {}) });
       await qc.invalidateQueries({ queryKey: keys.creatorVideos });
       toast.success('Video updated');
@@ -232,6 +240,7 @@ function EditDialog({ video, onClose }: { video: VideoDto; onClose(): void }): J
           void save();
         }}
       >
+        <ThumbnailPicker file={thumb} onChange={setThumb} current={video.thumbnailUrl} disabled={pending} hint="Replaces the picture viewers see on the video." />
         <VideoFields values={values} onChange={setValues} errors={errors} categories={config?.categories ?? [video.category]} />
         {serverError ? (
           <p className="form-error" role="alert">

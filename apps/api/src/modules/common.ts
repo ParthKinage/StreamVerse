@@ -34,7 +34,7 @@ export type VideoWithCreator = Prisma.VideoGetPayload<{ include: typeof videoInc
  */
 export function thumbnailUrl(videoId: string, thumbnailPath: string | null): string | null {
   if (!thumbnailPath) return null;
-  const version = /^hls\/[^/]+\/([^/]+)\/thumbnail\.jpg$/.exec(thumbnailPath)?.[1];
+  const version = /^hls\/[^/]+\/([^/]+)\/thumbnail\.jpg$/.exec(thumbnailPath)?.[1] ?? /[\\/](custom-[a-z0-9]+)[\\/]thumbnail\.jpg$/.exec(thumbnailPath)?.[1];
   return `/api/v1/videos/${videoId}/thumbnail${version ? `?v=${version}` : ''}`;
 }
 
