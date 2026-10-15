@@ -5,8 +5,7 @@ import { ApiError } from './api/client';
 import { AuthProvider } from './auth/AuthContext';
 import { ToastProvider } from './components/Toasts';
 import { useConfig } from './api/queries';
-import { PageSpinner } from './components/States';
-import { WakePanel } from './components/WakePanel';
+import { StartScreen } from './components/StartScreen';
 import { setMoneyFormat } from './lib/format';
 import { createRouter } from './routes';
 import { WalletProvider } from './wallet/WalletContext';
@@ -32,15 +31,9 @@ function ConfigGate({ children }: { children: ReactNode }): JSX.Element {
     // Keep the format in step if the config refetches.
     if (cfg) setMoneyFormat({ mode: cfg.paymentsMode, symbol: cfg.currencySymbol, code: cfg.currencyCode });
   }, [cfg]);
-  if (q.isPending) {
-    // The very first request: on the free plan this is where people wait for the server to wake, so offer the game.
-    return (
-      <div className="app-shell">
-        <PageSpinner label="Starting StreamVerse" />
-        <WakePanel />
-      </div>
-    );
-  }
+  // The very first request: on the free plan this is where people wait for the server to wake, so the whole screen
+  // becomes the coin game.
+  if (q.isPending) return <StartScreen />;
   return <>{children}</>;
 }
 
