@@ -102,7 +102,8 @@ describe('wallet linking', () => {
     await linkWallet(h, user, wallet);
     const summary = await authed(h, user).get('/api/v1/wallet/summary');
     expect(summary.body.escrowWei).toBe(parseEther('25').toString());
-    expect(summary.body.availableWei).toBe(parseEther('25').toString());
+    // Spendable: the 25 deposited plus the 50 welcome bonus, which counts at once while it is on its way.
+    expect(summary.body.availableWei).toBe(parseEther('75').toString());
   });
 
   it('blocks unlinking while there is escrow, allows it when empty', async () => {

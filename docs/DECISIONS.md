@@ -268,6 +268,12 @@ camera and microphone:
 
 Not yet run on the hosted site.
 
+## Instant coins and bonuses (owner request, 2026-10-16)
+
+| # | Decision | Status |
+|---|---|---|
+| D-INSTANT-CREDITS | Coins bought and the welcome bonus count as spendable **the moment they are granted**, instead of after the relayer has written them to the chain and the indexer has read them back (seconds on a healthy relayer, much longer when it is short of gas). The balance is now on-chain escrow + coins on their way (`incomingCredits`: purchases and bonuses not failed, not yet seen as a `Deposited` event) − unapplied settlements − open session charges. To keep the chain consistent, a viewer's payments to creators are held by the settlement worker until all of that viewer's coins on their way have landed; otherwise the contract would refuse them (`InsufficientEscrow`, treated as permanent). The sweeper retries every 15 s, so held payments go out automatically. Trade-off: if a credit ever failed permanently after being spent (only possible for a zero amount or address), that viewer's payment would fail and need an admin retry. | owner decision; implementation choice |
+
 ## Limitations and unverified items (UNKNOWN)
 
 | Item | Why it could not be completed in the build environment |

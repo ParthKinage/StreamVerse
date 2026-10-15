@@ -241,7 +241,9 @@ export async function seedViewer(h: Harness, strm = '10'): Promise<Viewer> {
   const user = await registerUser(h);
   const wallet = await newWallet(h);
   await linkWallet(h, user, wallet);
-  // The welcome bonus may be queued; keep tests deterministic by not relying on it.
+  // Keep tests deterministic by not relying on the welcome bonus: it never reaches the chain here, and coins on their
+  // way count as spendable (and hold the viewer's payments until they land), so set it aside.
+  await h.ctx.prisma.tokenReward.updateMany({ where: { userId: user.id, status: 'PENDING' }, data: { status: 'FAILED', lastError: 'not used in tests' } });
   if (Number(strm) > 0) await fundAndDeposit(h, wallet, strm);
   else await indexUntilCaughtUp(h.ctx);
   return { user, wallet };

@@ -5,6 +5,7 @@ import type { Prisma } from '@tesor_gp/database';
 import type { AppContext } from '../../context';
 import { sendAffordable } from '../../infra/affordable';
 import { fromWei, toWei } from '../common';
+import { incomingCredits } from '../wallet/balance';
 
 export const DEFAULT_FEE_BPS = 1000;
 /** Revert reasons that will never succeed on retry: the settlement is failed immediately. */
@@ -76,6 +77,7 @@ export async function markSettlementSettled(ctx: AppContext, tx: Tx, settlementI
 interface Row {
   id: string;
   settlementKey: string;
+  userId: string;
   amountSTRM: { toFixed(): string };
   attempts: number;
   user: { walletAddress: string | null };
@@ -103,13 +105,21 @@ async function settleSetAsSettled(ctx: AppContext, rows: Row[], txHash: string):
  * Throws on retryable failures so the queue retries with exponential backoff.
  */
 export async function processSettlements(ctx: AppContext): Promise<{ settled: number }> {
-  const rows = (await ctx.prisma.paymentSettlement.findMany({
+  let rows = (await ctx.prisma.paymentSettlement.findMany({
     where: { status: 'PENDING' },
     orderBy: { createdAt: 'asc' },
     take: ctx.env.SETTLE_BATCH_SIZE,
     include: { user: { select: { walletAddress: true } }, creator: { select: { user: { select: { walletAddress: true } } } } },
   })) as Row[];
   if (rows.length === 0) return { settled: 0 };
+
+  // A viewer may already be spending coins that are still on their way to the chain (purchases and bonuses count at
+  // once). Their payments wait for the next round, after those coins have landed, so the chain never refuses them.
+  const incoming = await incomingCredits(ctx.prisma, Array.from(new Set(rows.map((r) => r.userId))));
+  if (incoming.size) {
+    rows = rows.filter((r) => !incoming.has(r.userId));
+    if (rows.length === 0) return { settled: 0 };
+  }
 
   const chain = ctx.chain;
   if (!chain || !chain.relayerAddress) {

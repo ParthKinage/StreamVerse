@@ -89,14 +89,15 @@ describe('config privacy', () => {
 });
 
 describe('a wallet for every account', () => {
-  it('is created at sign-up from the master seed, with the welcome bonus on its way', async () => {
+  it('is created at sign-up from the master seed, with the welcome bonus spendable at once', async () => {
     const u = await registerUser(h);
     const row = await h.ctx.prisma.managedWallet.findUniqueOrThrow({ where: { userId: u.id } });
     expect(row.address).toBe(deriveAddress(DEV_WALLET_SEED, row.index));
     expect(row.address).toBe(deriveWallet(DEV_WALLET_SEED, row.index).address.toLowerCase());
     const before = await summary(u);
     expect(before.walletAddress).toBe(row.address);
-    expect(before).toMatchObject({ escrowWei: '0', availableWei: '0', arrivingWei: strm('50') });
+    // The bonus is spendable straight away, while it is still on its way to the chain.
+    expect(before).toMatchObject({ escrowWei: '0', availableWei: strm('50'), arrivingWei: strm('50') });
 
     await settleAll();
     const after = await summary(u);
@@ -171,7 +172,8 @@ describe('buying coins', () => {
     const res = await buy(u, '200');
     expect(res.status).toBe(202);
     expect(res.body.amountWei).toBe(strm('200'));
-    expect(res.body.summary).toMatchObject({ availableWei: strm('50'), arrivingWei: strm('200') });
+    // Bought coins are spendable at once; the blockchain record follows.
+    expect(res.body.summary).toMatchObject({ availableWei: strm('250'), arrivingWei: strm('200') });
     expect((await transactions(u))[0]).toMatchObject({ type: 'DEPOSIT', status: 'PENDING', amountWei: strm('200'), label: expect.stringContaining('Demo Bank Savings') });
 
     await settleAll();
@@ -314,16 +316,19 @@ describe('paying for a video', () => {
     expect(await token.getFunction('balanceOf')(address)).toBe(parseEther('10.8'));
   });
 
-  it('refuses to spend coins that have not arrived yet', async () => {
-    const { video } = await creatorWithVideo('60');
+  it('lets viewers spend coins at once and pays the creator once those coins have landed', async () => {
+    const { video, creator } = await creatorWithVideo('60');
     const viewer = await registerUser(h);
     await settleAll(); // 50 from the welcome bonus
-    await buy(viewer, '100'); // still on its way
-    const res = await unlock(viewer, video.id);
-    expect(res.status).toBe(402);
-    expect((res.body.error as { code: string }).code).toBe('INSUFFICIENT_BALANCE');
-    await settleAll();
+    await buy(viewer, '100'); // on its way to the chain, but spendable now
     expect((await unlock(viewer, video.id)).status).toBe(200);
+    // The payment waits for the coins it uses to be on the chain, so the chain never refuses it.
+    expect(await processSettlements(h.ctx)).toEqual({ settled: 0 });
+    expect(await h.ctx.prisma.paymentSettlement.count({ where: { status: 'PENDING' } })).toBe(1);
+    await settleAll();
+    expect(await h.ctx.prisma.paymentSettlement.count({ where: { status: 'SETTLED' } })).toBe(1);
+    const address = (await h.ctx.prisma.user.findUniqueOrThrow({ where: { id: creator.id } })).walletAddress as string;
+    expect(await h.ctx.chain!.getCreatorEarnings(address)).toBe(parseEther('54'));
   });
 
   it('works for a creator whose wallet was never prepared', async () => {

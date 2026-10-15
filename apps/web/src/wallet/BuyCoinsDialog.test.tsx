@@ -74,11 +74,9 @@ describe('buy coins dialog', () => {
     expect(screen.getByTestId('coin-submit').textContent).toBe('Pay ₹500');
   });
 
-  it('waits for the blockchain, then confirms the coins and tells the page', async () => {
+  it('adds the coins at once and tells the page, without waiting for the blockchain', async () => {
     const u = userEvent.setup();
     api.buyCoins.mockResolvedValue({ orderId: 'o1', amountWei: (200n * E18).toString(), summary: summaryOf(50n, 200n) });
-    // First poll: still on its way. Second poll: confirmed.
-    api.summary.mockResolvedValueOnce(summaryOf(50n, 200n)).mockResolvedValue(summaryOf(250n, 0n));
     const { onDone } = renderDialog();
     const input = await screen.findByLabelText(/coins to buy/i);
     await u.clear(input);
@@ -86,9 +84,8 @@ describe('buy coins dialog', () => {
     await u.click(screen.getByTestId('coin-submit'));
 
     expect(api.buyCoins).toHaveBeenCalledWith('demo-savings', (200n * E18).toString());
-    expect((await screen.findByTestId('coins-arriving')).textContent).toMatch(/adding 200 STRM/i);
-    expect(onDone).not.toHaveBeenCalled();
-    expect((await screen.findByTestId('coins-confirmed', {}, { timeout: 5000 })).textContent).toMatch(/200 STRM is now in your wallet/);
+    expect((await screen.findByTestId('coins-confirmed')).textContent).toMatch(/200 STRM is now in your wallet/);
+    expect(screen.queryByTestId('coins-arriving')).toBeNull();
     expect(onDone).toHaveBeenCalledTimes(1);
   });
 

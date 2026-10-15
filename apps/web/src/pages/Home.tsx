@@ -1,14 +1,15 @@
 import { useQuery } from '@tanstack/react-query';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import type { VideoDto } from '@tesor_gp/shared';
 import { useAuth } from '../auth/AuthContext';
 import { errorMessage } from '../api/client';
 import { catalogApi, liveApi } from '../api/endpoints';
 import { useCategories, useContinueWatching } from '../api/queries';
-import { EmptyState, ErrorState, Skeleton, VideoGridSkeleton } from '../components/States';
+import { CoinGame } from '../components/CoinGame';
+import { EmptyState, ErrorState, VideoGridSkeleton } from '../components/States';
 import { VideoCard } from '../components/VideoCard';
-import { costLabel, formatDuration, formatViews, timeAgo } from '../lib/format';
+import { useTheme } from '../lib/theme';
 
 function Section({ title, to, children }: { title: string; to?: string; children: ReactNode }): JSX.Element {
   return (
@@ -37,36 +38,33 @@ function Rail({ videos, testId, progress }: { videos: VideoDto[]; testId?: strin
   );
 }
 
-/** The big first thing on the page: a stream that is live now, or else the most watched video. */
-function Featured({ video, signedIn }: { video: VideoDto; signedIn: boolean }): JSX.Element {
-  const onAir = video.live?.status === 'LIVE';
+/**
+ * The welcome heading, with the StreamCoin catching game behind it: press Play and coins fall through the heading,
+ * caught with a tray along its bottom edge (mouse, finger or arrow keys). The canvas is transparent, so the heading
+ * stays readable on top.
+ */
+function Hero({ signedIn }: { signedIn: boolean }): JSX.Element {
+  const [playing, setPlaying] = useState(false);
+  const theme = useTheme();
   return (
-    <section className="featured" aria-label="Featured">
-      <div className="featured-copy">
-        <p className="eyebrow">{onAir ? 'Live now' : 'Featured'}</p>
-        <h1>{video.title}</h1>
-        <p className="muted">
-          {video.creator.channelName} · {onAir ? `${video.live?.viewers ?? 0} watching` : `${formatViews(video.viewsCount)} · ${timeAgo(video.createdAt)}`} · {costLabel(video)}
-        </p>
-        {video.description ? <p className="featured-desc">{video.description}</p> : null}
+    <section className={`hero hero-game${playing ? ' playing' : ''}`} aria-label="Welcome">
+      {playing ? <CoinGame key={theme} variant="full" /> : null}
+      <div className="hero-copy">
+        <p className="eyebrow">Pay only for what you watch</p>
+        <h1>Stories worth every second</h1>
+        <p className="muted">Watch by the second, or unlock a live stream once and keep it for good. Rewatching is free and skipped parts cost nothing.</p>
         <div className="actions">
-          <Link to={`/watch/${video.id}`} className="btn primary big">
-            {onAir ? 'Join the stream' : 'Watch now'}
-          </Link>
           {!signedIn ? (
-            <Link to="/register" className="btn big">
+            <Link to="/register" className="btn primary big">
               Create a free account
             </Link>
           ) : null}
+          <button type="button" className="btn big" onClick={() => setPlaying((p) => !p)} aria-pressed={playing} data-testid="hero-play">
+            {playing ? 'Stop the game' : '▶ Play: catch the StreamCoins'}
+          </button>
         </div>
+        {playing ? <p className="muted small hero-hint">Move the mouse or use the arrow keys to catch the coins.</p> : null}
       </div>
-      <Link to={`/watch/${video.id}`} className="featured-media thumb-link" aria-label={`Watch ${video.title}`}>
-        <div className="thumb">
-          {video.thumbnailUrl ? <img src={video.thumbnailUrl} alt="" decoding="async" /> : <div className="thumb-fallback" aria-hidden="true" />}
-          {onAir ? <span className="badge live">LIVE</span> : null}
-          {!onAir && video.durationSeconds > 0 ? <span className="badge duration">{formatDuration(video.durationSeconds)}</span> : null}
-        </div>
-      </Link>
     </section>
   );
 }
@@ -85,34 +83,10 @@ export default function Home(): JSX.Element {
   const cats = useCategories();
   const live = useQuery({ queryKey: ['live', 'now'], queryFn: liveApi.now, refetchInterval: 30_000 });
 
-  const featured = live.data?.items[0] ?? trending.data?.items[0] ?? recs.data?.items[0];
-  const featuredLoading = !featured && (trending.isPending || live.isPending);
 
   return (
     <div className="page">
-      {featured ? (
-        <Featured video={featured} signedIn={Boolean(user)} />
-      ) : featuredLoading ? (
-        <div className="featured" aria-hidden="true">
-          <div className="featured-copy">
-            <Skeleton className="line short" />
-            <Skeleton className="line" />
-            <Skeleton className="line short" />
-          </div>
-          <Skeleton className="thumb" />
-        </div>
-      ) : (
-        <section className="hero">
-          <p className="eyebrow">Pay only for what you watch</p>
-          <h1>Stories worth every second</h1>
-          <p className="muted">Watch by the second, or unlock a live stream once and keep it for good.</p>
-          {!user ? (
-            <Link to="/register" className="btn primary big">
-              Create a free account
-            </Link>
-          ) : null}
-        </section>
-      )}
+      <Hero signedIn={Boolean(user)} />
 
       {cats.data ? (
         <nav className="category-row" aria-label="Categories">
