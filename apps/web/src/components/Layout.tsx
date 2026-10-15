@@ -7,6 +7,8 @@ import { useWallet } from '../wallet/WalletContext';
 import { useOnAir } from '../live/onAir';
 import { ErrorBoundary } from './ErrorBoundary';
 import { PageSpinner } from './States';
+import { WakePanel } from './WakePanel';
+import { ThemeToggle } from './ThemeToggle';
 
 export function Layout(): JSX.Element {
   const { user, logout } = useAuth();
@@ -103,6 +105,7 @@ export function Layout(): JSX.Element {
               </Link>
             </>
           )}
+          <ThemeToggle />
         </nav>
       </header>
       <main id="main" className="main" tabIndex={-1}>
@@ -112,6 +115,7 @@ export function Layout(): JSX.Element {
           </Suspense>
         </ErrorBoundary>
       </main>
+      <WakePanel />
       <footer className="footer muted small">StreamVerse · pay only for what you watch</footer>
     </div>
   );

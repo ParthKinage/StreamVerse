@@ -1,5 +1,7 @@
 import type { ErrorResponse, UserDto } from '@tesor_gp/shared';
 
+import { trackRequest } from '../lib/slowServer';
+
 export const API_BASE: string = (import.meta.env.VITE_API_BASE as string | undefined) ?? '/api/v1';
 
 export class ApiError extends Error {
@@ -98,6 +100,8 @@ async function send(path: string, opts: RequestOptions, token: string | null): P
   if (opts.body !== undefined) headers['Content-Type'] = 'application/json';
   if (opts.raw) headers['Content-Type'] = opts.raw.contentType;
   if (token && !opts.anonymous) headers.Authorization = `Bearer ${token}`;
+  // Page data (GET) that takes long means the server is waking up; long uploads and payments are not counted.
+  const done = (opts.method ?? 'GET') === 'GET' ? trackRequest() : () => undefined;
   try {
     return await fetch(buildUrl(path, opts.query), {
       method: opts.method ?? 'GET',
@@ -110,6 +114,8 @@ async function send(path: string, opts: RequestOptions, token: string | null): P
   } catch (err) {
     if ((err as Error).name === 'AbortError') throw err;
     throw new ApiError(0, 'NETWORK_ERROR', 'Cannot reach the server. Check your connection and try again.');
+  } finally {
+    done();
   }
 }
 

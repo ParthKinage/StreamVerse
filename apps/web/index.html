@@ -3,13 +3,50 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0d111a" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f1ece3" media="(prefers-color-scheme: light)" />
     <title>StreamVerse | Pay-As-You-Watch Web3 Streaming</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@600;700&display=swap" rel="stylesheet">
+    <script>
+      // Apply a saved theme before anything is drawn (same key as src/lib/theme.ts).
+      try {
+        var t = localStorage.getItem('streamverse.theme');
+        if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+      } catch (e) {}
+    </script>
+    <style>
+      /* First paint, before the app's code has downloaded: the wordmark and a brass line sweeping beneath it. */
+      html, body { margin: 0; background: #0d111a; }
+      :root[data-theme='light'] body { background: #f1ece3; }
+      :root[data-theme='light'] .boot { color: #121826; }
+      :root[data-theme='light'] .boot-line { background: #dcd4c6; }
+      :root[data-theme='light'] .boot-line::after { background: #1f2e4d; }
+      @media (prefers-color-scheme: light) {
+        :root:not([data-theme='dark']) body { background: #f1ece3; }
+        :root:not([data-theme='dark']) .boot { color: #121826; }
+        :root:not([data-theme='dark']) .boot-line { background: #dcd4c6; }
+        :root:not([data-theme='dark']) .boot-line::after { background: #1f2e4d; }
+      }
+      .boot { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; color: #e9e5dc; font-family: Manrope, Inter, system-ui, sans-serif; }
+      .boot-mark { font-size: 15px; font-weight: 700; letter-spacing: 0.5em; padding-left: 0.5em; animation: boot-in 1.2s ease both; }
+      .boot-line { position: relative; width: 160px; height: 1px; background: #232b3b; overflow: hidden; }
+      .boot-line::after { content: ''; position: absolute; top: 0; left: -40%; width: 40%; height: 1px; background: #b89b66; animation: boot-sweep 1.4s cubic-bezier(0.22, 0.61, 0.36, 1) infinite; }
+      .boot-note { font: 600 10px Inter, system-ui, sans-serif; letter-spacing: 0.24em; text-transform: uppercase; color: #767e8d; }
+      @keyframes boot-in { from { opacity: 0; letter-spacing: 0.8em; } }
+      @keyframes boot-sweep { to { left: 100%; } }
+      @media (prefers-reduced-motion: reduce) { .boot-mark, .boot-line::after { animation: none; } }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="boot" role="status" aria-label="Loading StreamVerse">
+        <div class="boot-mark">STREAMVERSE</div>
+        <div class="boot-line"></div>
+        <div class="boot-note">Pay only for what you watch</div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
