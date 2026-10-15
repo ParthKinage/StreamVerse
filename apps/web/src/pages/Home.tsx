@@ -1,20 +1,81 @@
 import { useQuery } from '@tanstack/react-query';
+import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
+import type { VideoDto } from '@tesor_gp/shared';
 import { useAuth } from '../auth/AuthContext';
 import { errorMessage } from '../api/client';
 import { catalogApi, liveApi } from '../api/endpoints';
 import { useCategories, useContinueWatching } from '../api/queries';
-import { EmptyState, ErrorState, VideoGridSkeleton } from '../components/States';
+import { EmptyState, ErrorState, Skeleton, VideoGridSkeleton } from '../components/States';
 import { VideoCard } from '../components/VideoCard';
+import { costLabel, formatDuration, formatViews, timeAgo } from '../lib/format';
 
-function Section({ title, children }: { title: string; children: React.ReactNode }): JSX.Element {
+function Section({ title, to, children }: { title: string; to?: string; children: ReactNode }): JSX.Element {
   return (
     <section className="section" aria-label={title}>
-      <h2>{title}</h2>
+      <div className="section-head">
+        <h2>{title}</h2>
+        {to ? (
+          <Link to={to} className="see-all">
+            See all
+          </Link>
+        ) : null}
+      </div>
       {children}
     </section>
   );
 }
+
+/** A row of videos: a grid on wide screens, a row you swipe sideways on a phone. */
+function Rail({ videos, testId, progress }: { videos: VideoDto[]; testId?: string; progress?: Record<string, number> }): JSX.Element {
+  return (
+    <div className="video-grid rail" data-testid={testId}>
+      {videos.map((v) => (
+        <VideoCard key={v.id} video={v} progress={progress?.[v.id]} />
+      ))}
+    </div>
+  );
+}
+
+/** The big first thing on the page: a stream that is live now, or else the most watched video. */
+function Featured({ video, signedIn }: { video: VideoDto; signedIn: boolean }): JSX.Element {
+  const onAir = video.live?.status === 'LIVE';
+  return (
+    <section className="featured" aria-label="Featured">
+      <div className="featured-copy">
+        <p className="eyebrow">{onAir ? 'Live now' : 'Featured'}</p>
+        <h1>{video.title}</h1>
+        <p className="muted">
+          {video.creator.channelName} · {onAir ? `${video.live?.viewers ?? 0} watching` : `${formatViews(video.viewsCount)} · ${timeAgo(video.createdAt)}`} · {costLabel(video)}
+        </p>
+        {video.description ? <p className="featured-desc">{video.description}</p> : null}
+        <div className="actions">
+          <Link to={`/watch/${video.id}`} className="btn primary big">
+            {onAir ? 'Join the stream' : 'Watch now'}
+          </Link>
+          {!signedIn ? (
+            <Link to="/register" className="btn big">
+              Create a free account
+            </Link>
+          ) : null}
+        </div>
+      </div>
+      <Link to={`/watch/${video.id}`} className="featured-media thumb-link" aria-label={`Watch ${video.title}`}>
+        <div className="thumb">
+          {video.thumbnailUrl ? <img src={video.thumbnailUrl} alt="" decoding="async" /> : <div className="thumb-fallback" aria-hidden="true" />}
+          {onAir ? <span className="badge live">LIVE</span> : null}
+          {!onAir && video.durationSeconds > 0 ? <span className="badge duration">{formatDuration(video.durationSeconds)}</span> : null}
+        </div>
+      </Link>
+    </section>
+  );
+}
+
+const STEPS: Array<[string, string]> = [
+  ['Pay by the second', 'Videos cost only the seconds you watch. Rewatching is free and skipped parts cost nothing.'],
+  ['Unlock live once', 'Pay a stream’s price once and keep the stream and its recording for good.'],
+  ['Creators earn directly', 'Every payment is settled in StreamCoin, on the blockchain, straight to the creator.'],
+];
 
 export default function Home(): JSX.Element {
   const { user } = useAuth();
@@ -24,31 +85,54 @@ export default function Home(): JSX.Element {
   const cats = useCategories();
   const live = useQuery({ queryKey: ['live', 'now'], queryFn: liveApi.now, refetchInterval: 30_000 });
 
+  const featured = live.data?.items[0] ?? trending.data?.items[0] ?? recs.data?.items[0];
+  const featuredLoading = !featured && (trending.isPending || live.isPending);
+
   return (
     <div className="page">
-      <section className="hero">
-        <p className="eyebrow">Pay only for what you watch</p>
-        <h1>Stories worth every second</h1>
-        <p className="muted">Watch by the second, or unlock a live stream once and keep it for good. Rewatching is free and skipped parts cost nothing.</p>
-        {!user ? (
-          <Link to="/register" className="btn primary big">
-            Create a free account
-          </Link>
-        ) : null}
-      </section>
+      {featured ? (
+        <Featured video={featured} signedIn={Boolean(user)} />
+      ) : featuredLoading ? (
+        <div className="featured" aria-hidden="true">
+          <div className="featured-copy">
+            <Skeleton className="line short" />
+            <Skeleton className="line" />
+            <Skeleton className="line short" />
+          </div>
+          <Skeleton className="thumb" />
+        </div>
+      ) : (
+        <section className="hero">
+          <p className="eyebrow">Pay only for what you watch</p>
+          <h1>Stories worth every second</h1>
+          <p className="muted">Watch by the second, or unlock a live stream once and keep it for good.</p>
+          {!user ? (
+            <Link to="/register" className="btn primary big">
+              Create a free account
+            </Link>
+          ) : null}
+        </section>
+      )}
+
+      {cats.data ? (
+        <nav className="category-row" aria-label="Categories">
+          {cats.data.categories.map((c) => (
+            <Link key={c.name} className="chip" to={`/search?category=${encodeURIComponent(c.name)}`}>
+              {c.name}
+              {c.count ? <span className="chip-count">{c.count}</span> : null}
+            </Link>
+          ))}
+        </nav>
+      ) : null}
 
       {live.data?.items.length ? (
         <Section title="Live now">
-          <div className="video-grid" data-testid="live-now">
-            {live.data.items.map((v) => (
-              <VideoCard key={v.id} video={v} />
-            ))}
-          </div>
+          <Rail videos={live.data.items} testId="live-now" />
         </Section>
       ) : null}
 
       {user ? (
-        <Section title="Continue watching">
+        <Section title="Continue watching" to="/history">
           {continueQ.isPending ? (
             <VideoGridSkeleton count={4} />
           ) : continueQ.isError ? (
@@ -56,16 +140,12 @@ export default function Home(): JSX.Element {
           ) : continueQ.data.items.length === 0 ? (
             <EmptyState title="Nothing in progress">Videos you start watching will appear here.</EmptyState>
           ) : (
-            <div className="video-grid">
-              {continueQ.data.items.map((h) => (
-                <VideoCard key={h.sessionId} video={h.video} progress={h.lastPositionSec} />
-              ))}
-            </div>
+            <Rail videos={continueQ.data.items.map((h) => h.video)} progress={Object.fromEntries(continueQ.data.items.map((h) => [h.video.id, h.lastPositionSec]))} />
           )}
         </Section>
       ) : null}
 
-      <Section title="Recommended">
+      <Section title="Recommended" to="/search">
         {recs.isPending ? (
           <VideoGridSkeleton />
         ) : recs.isError ? (
@@ -73,15 +153,21 @@ export default function Home(): JSX.Element {
         ) : recs.data.items.length === 0 ? (
           <EmptyState title="No videos yet">Check back soon.</EmptyState>
         ) : (
-          <div className="video-grid">
-            {recs.data.items.map((v) => (
-              <VideoCard key={v.id} video={v} />
-            ))}
-          </div>
+          <Rail videos={recs.data.items} />
         )}
       </Section>
 
-      <Section title="Trending">
+      <section className="how" aria-label="How it works">
+        {STEPS.map(([title, text], i) => (
+          <div key={title} className="how-step">
+            <span className="how-num">0{i + 1}</span>
+            <h3>{title}</h3>
+            <p className="muted small">{text}</p>
+          </div>
+        ))}
+      </section>
+
+      <Section title="Trending" to="/search?sort=trending">
         {trending.isPending ? (
           <VideoGridSkeleton />
         ) : trending.isError ? (
@@ -89,31 +175,11 @@ export default function Home(): JSX.Element {
         ) : trending.data.items.length === 0 ? (
           <EmptyState title="Nothing trending right now" />
         ) : (
-          <div className="video-grid">
-            {trending.data.items.map((v) => (
-              <VideoCard key={v.id} video={v} />
-            ))}
-          </div>
+          <Rail videos={trending.data.items} />
         )}
       </Section>
 
-      <Section title="Browse by category">
-        {cats.isPending ? (
-          <VideoGridSkeleton count={0} />
-        ) : cats.isError ? (
-          <ErrorState message={errorMessage(cats.error)} onRetry={() => void cats.refetch()} />
-        ) : (
-          <ul className="chips">
-            {cats.data.categories.map((c) => (
-              <li key={c.name}>
-                <Link className="chip" to={`/search?category=${encodeURIComponent(c.name)}`}>
-                  {c.name} <span className="muted">({c.count})</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Section>
+      {cats.isError ? <ErrorState message={errorMessage(cats.error)} onRetry={() => void cats.refetch()} /> : null}
     </div>
   );
 }

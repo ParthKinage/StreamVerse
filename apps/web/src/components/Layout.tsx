@@ -37,16 +37,13 @@ export function Layout(): JSX.Element {
         <Link to="/" className="brand" onClick={() => setOpen(false)}>
           StreamVerse
         </Link>
-        <button type="button" className="icon-btn menu-toggle" aria-label="Toggle menu" aria-expanded={open} aria-controls="site-nav" onClick={() => setOpen((o) => !o)}>
-          ☰
-        </button>
+        <form className="search" role="search" onSubmit={onSearch}>
+          <label className="sr-only" htmlFor="site-search">
+            Search videos
+          </label>
+          <input id="site-search" type="search" placeholder="Search videos" value={q} onChange={(e) => setQ(e.target.value)} />
+        </form>
         <nav id="site-nav" className={`nav ${open ? 'open' : ''}`} aria-label="Main">
-          <form className="search" role="search" onSubmit={onSearch}>
-            <label className="sr-only" htmlFor="site-search">
-              Search videos
-            </label>
-            <input id="site-search" type="search" placeholder="Search videos" value={q} onChange={(e) => setQ(e.target.value)} />
-          </form>
           <NavLink to="/" end className={link} onClick={() => setOpen(false)}>
             Home
           </NavLink>
@@ -105,8 +102,14 @@ export function Layout(): JSX.Element {
               </Link>
             </>
           )}
-          <ThemeToggle />
         </nav>
+        {/* On a phone the theme toggle and menu button stay on the first row, next to the logo. */}
+        <div className="topbar-tools">
+          <ThemeToggle />
+          <button type="button" className="icon-btn menu-toggle" aria-label="Toggle menu" aria-expanded={open} aria-controls="site-nav" onClick={() => setOpen((o) => !o)}>
+            ☰
+          </button>
+        </div>
       </header>
       <main id="main" className="main" tabIndex={-1}>
         <ErrorBoundary resetKey={location.pathname}>

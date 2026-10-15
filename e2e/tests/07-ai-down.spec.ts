@@ -11,7 +11,7 @@ test('home recommendations fall back when the AI service is down', async ({ page
     expect(rec.body.source).toBe('fallback');
     expect(rec.body.items.length).toBeGreaterThan(0);
     await page.goto('/');
-    await expect(page.getByRole('heading', { name: 'Stories worth every second' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Recommended' })).toBeVisible();
     await expect(page.getByText('E2E main video').first()).toBeVisible();
   } finally {
     await platform.stack.startAi();
