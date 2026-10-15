@@ -1,33 +1,33 @@
 /*
- * StreamVerse, "Navy and brass" (dark) and "Sand and navy" (light): neutral, tailored, one accent per theme (brass in
- * dark, navy in light), square corners everywhere, bold sans headings. Motion is slow and small (fade-ins, a slight
+ * StreamVerse, "Carbon and oxblood" (dark) and "Parchment and ink" (light): neutral and editorial, one accent per theme
+ * (a soft oxblood in dark, deep oxblood in light), square corners everywhere, bold sans headings. Motion is slow and small (fade-ins, a slight
  * thumbnail zoom, a drifting light behind the page, a breathing LIVE dot); buttons do not animate. Everything that
  * moves stops for people who ask for reduced motion. The video player is a dark stage in both themes.
  */
 :root {
-  --bg: #0d111a;
-  --surface: #141a26;
-  --surface-2: #1a2131;
-  --surface-3: #222a3c;
-  --line: #232b3b;
-  --line-strong: #34405a;
-  --text: #e9e5dc;
-  --text-2: #a2a8b4;
-  --text-3: #838b9a;
-  --accent: #b89b66;
-  --accent-hover: #c9ae7c;
-  --on-accent: #0d111a;
-  --live: #c9614c;
+  --bg: #111214;
+  --surface: #18191c;
+  --surface-2: #1e1f23;
+  --surface-3: #26272b;
+  --line: #2b2b2e;
+  --line-strong: #3d3c40;
+  --text: #ece7df;
+  --text-2: #a39d94;
+  --text-3: #8f897f;
+  --accent: #c27a70;
+  --accent-hover: #d08b81;
+  --on-accent: #111214;
+  --live: #e06c5b;
   --danger: #d7735f;
   --ok: #8fb39a;
   --warn: #d6b36a;
-  --topbar-bg: rgba(13, 17, 26, 0.88);
-  --spot-a: rgba(184, 155, 102, 0.07);
-  --spot-b: rgba(143, 170, 196, 0.05);
-  --veil: rgba(6, 8, 13, 0.78);
-  --hover-wash: rgba(233, 229, 220, 0.08);
-  --accent-wash: rgba(184, 155, 102, 0.08);
-  --skeleton-hi: #263049;
+  --topbar-bg: rgba(17, 18, 20, 0.88);
+  --spot-a: rgba(194, 122, 112, 0.07);
+  --spot-b: rgba(236, 231, 223, 0.04);
+  --veil: rgba(8, 8, 9, 0.78);
+  --hover-wash: rgba(236, 231, 223, 0.08);
+  --accent-wash: rgba(194, 122, 112, 0.08);
+  --skeleton-hi: #2a2b30;
   color-scheme: dark;
   --font-head: 'Manrope', 'Inter', system-ui, sans-serif;
   --font-body: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -37,56 +37,56 @@
 
 /* Light theme: when the viewer picks it, or when their device prefers light and they have not picked dark. */
 :root[data-theme='light'] {
-  --bg: #f1ece3;
+  --bg: #f3eee4;
   --surface: #fbf8f2;
-  --surface-2: #eae4d8;
-  --surface-3: #e0d9cb;
-  --line: #dcd4c6;
-  --line-strong: #c3b9a7;
-  --text: #121826;
-  --text-2: #57544b;
-  --text-3: #68645a;
-  --accent: #1f2e4d;
-  --accent-hover: #2a3c63;
-  --on-accent: #f1ece3;
-  --live: #a8402d;
-  --danger: #a8402d;
+  --surface-2: #ece6da;
+  --surface-3: #e2dbcd;
+  --line: #ddd5c7;
+  --line-strong: #c7bdab;
+  --text: #1b1c20;
+  --text-2: #57534b;
+  --text-3: #6a645b;
+  --accent: #6e2b2b;
+  --accent-hover: #5a2121;
+  --on-accent: #f3eee4;
+  --live: #a33a2b;
+  --danger: #a33a2b;
   --ok: #3f7a52;
   --warn: #8a6a1f;
-  --topbar-bg: rgba(241, 236, 227, 0.9);
-  --spot-a: rgba(31, 46, 77, 0.06);
-  --spot-b: rgba(184, 155, 102, 0.09);
-  --veil: rgba(6, 8, 13, 0.72);
-  --hover-wash: rgba(18, 24, 38, 0.06);
-  --accent-wash: rgba(31, 46, 77, 0.06);
-  --skeleton-hi: #f7f3ec;
+  --topbar-bg: rgba(243, 238, 228, 0.9);
+  --spot-a: rgba(110, 43, 43, 0.06);
+  --spot-b: rgba(194, 122, 112, 0.09);
+  --veil: rgba(8, 8, 9, 0.72);
+  --hover-wash: rgba(27, 28, 32, 0.06);
+  --accent-wash: rgba(110, 43, 43, 0.06);
+  --skeleton-hi: #f8f4ec;
   color-scheme: light;
 }
 @media (prefers-color-scheme: light) {
   :root:not([data-theme='dark']) {
-    --bg: #f1ece3;
+    --bg: #f3eee4;
     --surface: #fbf8f2;
-    --surface-2: #eae4d8;
-    --surface-3: #e0d9cb;
-    --line: #dcd4c6;
-    --line-strong: #c3b9a7;
-    --text: #121826;
-    --text-2: #57544b;
-    --text-3: #68645a;
-    --accent: #1f2e4d;
-    --accent-hover: #2a3c63;
-    --on-accent: #f1ece3;
-    --live: #a8402d;
-    --danger: #a8402d;
+    --surface-2: #ece6da;
+    --surface-3: #e2dbcd;
+    --line: #ddd5c7;
+    --line-strong: #c7bdab;
+    --text: #1b1c20;
+    --text-2: #57534b;
+    --text-3: #6a645b;
+    --accent: #6e2b2b;
+    --accent-hover: #5a2121;
+    --on-accent: #f3eee4;
+    --live: #a33a2b;
+    --danger: #a33a2b;
     --ok: #3f7a52;
     --warn: #8a6a1f;
-    --topbar-bg: rgba(241, 236, 227, 0.9);
-    --spot-a: rgba(31, 46, 77, 0.06);
-    --spot-b: rgba(184, 155, 102, 0.09);
-    --veil: rgba(6, 8, 13, 0.72);
-    --hover-wash: rgba(18, 24, 38, 0.06);
-    --accent-wash: rgba(31, 46, 77, 0.06);
-    --skeleton-hi: #f7f3ec;
+    --topbar-bg: rgba(243, 238, 228, 0.9);
+    --spot-a: rgba(110, 43, 43, 0.06);
+    --spot-b: rgba(194, 122, 112, 0.09);
+    --veil: rgba(8, 8, 9, 0.72);
+    --hover-wash: rgba(27, 28, 32, 0.06);
+    --accent-wash: rgba(110, 43, 43, 0.06);
+    --skeleton-hi: #f8f4ec;
     color-scheme: light;
   }
 }
@@ -209,7 +209,7 @@ textarea { width: 100%; resize: vertical; }
 .thumb-link:hover { color: inherit; }
 .thumb-fallback { width: 100%; height: 100%; background: var(--surface-3); }
 .badge { display: inline-block; font-size: 0.68rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; padding: 3px 8px; background: var(--surface-3); color: var(--text-2); }
-.badge.duration { position: absolute; right: 8px; bottom: 8px; background: rgba(13, 17, 26, 0.85); color: #e9e5dc; letter-spacing: 0.04em; font-variant-numeric: tabular-nums; }
+.badge.duration { position: absolute; right: 8px; bottom: 8px; background: rgba(17, 18, 20, 0.85); color: #ece7df; letter-spacing: 0.04em; font-variant-numeric: tabular-nums; }
 .badge.ok { background: rgba(143, 179, 154, 0.14); color: var(--ok); }
 .badge.warn { background: rgba(214, 179, 106, 0.14); color: var(--warn); }
 .badge.danger { background: rgba(215, 115, 95, 0.14); color: var(--danger); }
@@ -352,23 +352,23 @@ progress { width: 100%; height: 6px; accent-color: var(--accent); }
 .player { position: relative; background: #000; overflow: hidden; aspect-ratio: 16 / 9; border: 1px solid var(--line); }
 .player-video { width: 100%; height: 100%; background: #000; object-fit: contain; }
 /* The player is a dark stage in both themes, so its overlays and controls keep light text. */
-.player { color: #e9e5dc; }
-.player .muted { color: #a2a8b4; }
-.player-overlay { position: absolute; inset: 0; background: rgba(6, 8, 13, 0.78); display: flex; flex-direction: column; gap: 12px; align-items: center; justify-content: center; text-align: center; padding: 16px; animation: fade 0.3s ease both; }
+.player { color: #ece7df; }
+.player .muted { color: #a39d94; }
+.player-overlay { position: absolute; inset: 0; background: rgba(8, 8, 9, 0.78); display: flex; flex-direction: column; gap: 12px; align-items: center; justify-content: center; text-align: center; padding: 16px; animation: fade 0.3s ease both; }
 .player-banner { position: absolute; top: 10px; left: 10px; right: 10px; background: rgba(214, 179, 106, 0.95); color: #141414; padding: 8px 12px; font-weight: 600; }
 .player-banner .link-btn { color: #141414; }
-.player-controls { position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: center; gap: 6px; padding: 10px 12px; background: linear-gradient(transparent, rgba(6, 8, 13, 0.9)); flex-wrap: wrap; }
+.player-controls { position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: center; gap: 6px; padding: 10px 12px; background: linear-gradient(transparent, rgba(8, 8, 9, 0.9)); flex-wrap: wrap; }
 .player-controls .seek { flex: 1; min-width: 80px; accent-color: var(--accent); }
 .player-controls .volume { width: 70px; accent-color: var(--accent); }
 .player-controls .time { font-size: 0.78rem; font-variant-numeric: tabular-nums; color: var(--text-2); }
-.player-controls select { padding: 4px 6px; font-size: 0.78rem; background: rgba(20, 26, 38, 0.85); color: #e9e5dc; border-color: #34405a; }
-.player .icon-btn { color: #e9e5dc; }
-.player .btn:not(.primary) { color: #e9e5dc; border-color: #34405a; }
-.player-controls .time { color: #a2a8b4 !important; }
-.cost-meter { position: absolute; top: 10px; right: 10px; display: grid; grid-template-columns: repeat(2, auto); gap: 4px 18px; background: rgba(13, 17, 26, 0.82); border: 1px solid #34405a; padding: 10px 14px; font-size: 0.76rem; }
-.cost-meter dt { color: #767e8d; font-size: 0.66rem; letter-spacing: 0.1em; text-transform: uppercase; }
+.player-controls select { padding: 4px 6px; font-size: 0.78rem; background: rgba(24, 25, 28, 0.85); color: #ece7df; border-color: #3d3c40; }
+.player .icon-btn { color: #ece7df; }
+.player .btn:not(.primary) { color: #ece7df; border-color: #3d3c40; }
+.player-controls .time { color: #a39d94 !important; }
+.cost-meter { position: absolute; top: 10px; right: 10px; display: grid; grid-template-columns: repeat(2, auto); gap: 4px 18px; background: rgba(17, 18, 20, 0.82); border: 1px solid #3d3c40; padding: 10px 14px; font-size: 0.76rem; }
+.cost-meter dt { color: #8a847b; font-size: 0.66rem; letter-spacing: 0.1em; text-transform: uppercase; }
 .cost-meter dd { font-weight: 600; font-variant-numeric: tabular-nums; }
-@media (max-width: 560px) { .cost-meter { position: static; background: #141a26; border-width: 1px 0 0; } .player { aspect-ratio: auto; } .player-video { aspect-ratio: 16 / 9; } .player-controls { position: static; background: #141a26; } }
+@media (max-width: 560px) { .cost-meter { position: static; background: #18191c; border-width: 1px 0 0; } .player { aspect-ratio: auto; } .player-video { aspect-ratio: 16 / 9; } .player-controls { position: static; background: #18191c; } }
 
 /* Live streaming */
 .badge.live { display: inline-flex; align-items: center; gap: 6px; background: var(--bg); color: var(--text); border: 1px solid var(--live); }

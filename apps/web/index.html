@@ -3,8 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#0d111a" media="(prefers-color-scheme: dark)" />
-    <meta name="theme-color" content="#f1ece3" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#111214" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f3eee4" media="(prefers-color-scheme: light)" />
     <title>StreamVerse | Pay-As-You-Watch Web3 Streaming</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -17,23 +17,23 @@
       } catch (e) {}
     </script>
     <style>
-      /* First paint, before the app's code has downloaded: the wordmark and a brass line sweeping beneath it. */
-      html, body { margin: 0; background: #0d111a; }
-      :where(:root[data-theme='light']) body { background: #f1ece3; }
-      :root[data-theme='light'] .boot { color: #121826; }
-      :root[data-theme='light'] .boot-line { background: #dcd4c6; }
-      :root[data-theme='light'] .boot-line::after { background: #1f2e4d; }
+      /* First paint, before the app's code has downloaded: the wordmark and an oxblood line sweeping beneath it. */
+      html, body { margin: 0; background: #111214; }
+      :where(:root[data-theme='light']) body { background: #f3eee4; }
+      :root[data-theme='light'] .boot { color: #1b1c20; }
+      :root[data-theme='light'] .boot-line { background: #ddd5c7; }
+      :root[data-theme='light'] .boot-line::after { background: #6e2b2b; }
       @media (prefers-color-scheme: light) {
-        :where(:root:not([data-theme='dark'])) body { background: #f1ece3; }
-        :root:not([data-theme='dark']) .boot { color: #121826; }
-        :root:not([data-theme='dark']) .boot-line { background: #dcd4c6; }
-        :root:not([data-theme='dark']) .boot-line::after { background: #1f2e4d; }
+        :where(:root:not([data-theme='dark'])) body { background: #f3eee4; }
+        :root:not([data-theme='dark']) .boot { color: #1b1c20; }
+        :root:not([data-theme='dark']) .boot-line { background: #ddd5c7; }
+        :root:not([data-theme='dark']) .boot-line::after { background: #6e2b2b; }
       }
-      .boot { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; color: #e9e5dc; font-family: Manrope, Inter, system-ui, sans-serif; }
+      .boot { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; color: #ece7df; font-family: Manrope, Inter, system-ui, sans-serif; }
       .boot-mark { font-size: 15px; font-weight: 700; letter-spacing: 0.5em; padding-left: 0.5em; animation: boot-in 1.2s ease both; }
-      .boot-line { position: relative; width: 160px; height: 1px; background: #232b3b; overflow: hidden; }
-      .boot-line::after { content: ''; position: absolute; top: 0; left: -40%; width: 40%; height: 1px; background: #b89b66; animation: boot-sweep 1.4s cubic-bezier(0.22, 0.61, 0.36, 1) infinite; }
-      .boot-note { font: 600 10px Inter, system-ui, sans-serif; letter-spacing: 0.24em; text-transform: uppercase; color: #767e8d; }
+      .boot-line { position: relative; width: 160px; height: 1px; background: #2b2b2e; overflow: hidden; }
+      .boot-line::after { content: ''; position: absolute; top: 0; left: -40%; width: 40%; height: 1px; background: #c27a70; animation: boot-sweep 1.4s cubic-bezier(0.22, 0.61, 0.36, 1) infinite; }
+      .boot-note { font: 600 10px Inter, system-ui, sans-serif; letter-spacing: 0.24em; text-transform: uppercase; color: #8a847b; }
       @keyframes boot-in { from { opacity: 0; letter-spacing: 0.8em; } }
       @keyframes boot-sweep { to { left: 100%; } }
       @media (prefers-reduced-motion: reduce) { .boot-mark, .boot-line::after { animation: none; } }
