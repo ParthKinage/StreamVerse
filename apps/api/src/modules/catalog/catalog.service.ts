@@ -47,6 +47,38 @@ export async function decorateVideos(ctx: AppContext, videos: VideoWithCreator[]
   );
 }
 
+/** No charge of any kind: no rate per minute and no access price (or a zero one). */
+const freeWhere: Prisma.VideoWhereInput = { ratePerMinuteSTRM: 0, OR: [{ accessPriceSTRM: null }, { accessPriceSTRM: 0 }] };
+
+const LENGTH_WHERE: Record<NonNullable<VideoListQuery['length']>, Prisma.VideoWhereInput> = {
+  short: { durationSeconds: { lt: 240 } },
+  medium: { durationSeconds: { gte: 240, lte: 1200 } },
+  long: { durationSeconds: { gt: 1200 } },
+};
+
+/**
+ * Videos the viewer owns: live streams and recordings they bought, and videos whose every second they have paid for
+ * (those play free from then on). Free videos are never "owned"; there is nothing to own.
+ */
+export async function ownedVideoIds(ctx: AppContext, userId: string): Promise<string[]> {
+  const [bought, paid] = await Promise.all([
+    ctx.prisma.videoPurchase.findMany({ where: { userId, expiresAt: { gt: ctx.now() }, amountSTRM: { gt: 0 } }, select: { videoId: true }, distinct: ['videoId'] }),
+    ctx.prisma.paidSegment.groupBy({ by: ['videoId'], where: { userId }, _sum: { durationMs: true } }),
+  ]);
+  const ids = new Set(bought.map((b) => b.videoId));
+  const candidates = paid.filter((p) => !ids.has(p.videoId));
+  if (candidates.length) {
+    const lengths = await ctx.prisma.video.findMany({ where: { id: { in: candidates.map((p) => p.videoId) }, durationSeconds: { gt: 0 } }, select: { id: true, durationSeconds: true } });
+    const seconds = new Map(lengths.map((v) => [v.id, v.durationSeconds]));
+    for (const p of candidates) {
+      const length = seconds.get(p.videoId);
+      // Pieces are about 4 s; a second of slack covers rounding in the last one.
+      if (length && (p._sum.durationMs ?? 0) >= length * 1000 - 1000) ids.add(p.videoId);
+    }
+  }
+  return [...ids];
+}
+
 const TRENDING_WINDOW = 500;
 
 /** Video ids ordered by completed views in the last 7 days, then newest. Used by sort=trending and as AI fallback. */
@@ -73,10 +105,15 @@ export async function trendingVideoIds(ctx: AppContext, limit: number, offset = 
   return [...ranked, ...rest.map((r) => r.id).filter((id) => !seen.has(id))].slice(offset, offset + limit);
 }
 
-export async function listVideos(ctx: AppContext, query: VideoListQuery, viewerId?: string): Promise<VideoListResponse> {
+export async function listVideos(ctx: AppContext, query: VideoListQuery, viewerId?: string, extra?: Prisma.VideoWhereInput): Promise<VideoListResponse> {
   const filters: Prisma.VideoWhereInput[] = [publicVideoWhere];
+  if (extra) filters.push(extra);
   if (query.category) filters.push({ category: query.category });
   if (query.creatorId) filters.push({ creatorId: query.creatorId });
+  if (query.price === 'free') filters.push(freeWhere);
+  if (query.price === 'paid') filters.push({ NOT: freeWhere });
+  if (query.length) filters.push(LENGTH_WHERE[query.length]);
+  if (query.owned && viewerId) filters.push({ id: { in: await ownedVideoIds(ctx, viewerId) } });
   if (query.q) {
     const q = query.q;
     filters.push({
@@ -159,17 +196,46 @@ export async function listCategories(ctx: AppContext): Promise<Array<{ name: str
   });
 }
 
-export async function getCreatorProfile(ctx: AppContext, id: string): Promise<CreatorProfileDto> {
+type CreatorRow = Prisma.CreatorProfileGetPayload<{ include: { user: { select: { username: true } } } }>;
+
+/** Channel cards with counts (and, for a signed-in viewer, whether they follow each one). */
+export async function creatorsToDto(ctx: AppContext, creators: CreatorRow[], viewerId?: string): Promise<CreatorProfileDto[]> {
+  if (creators.length === 0) return [];
+  const ids = creators.map((c) => c.id);
+  const [videos, followers, mine] = await Promise.all([
+    ctx.prisma.video.groupBy({ by: ['creatorId'], where: { creatorId: { in: ids }, ...publicVideoWhere }, _count: { _all: true }, _sum: { viewsCount: true } }),
+    ctx.prisma.follow.groupBy({ by: ['creatorId'], where: { creatorId: { in: ids } }, _count: { _all: true } }),
+    viewerId ? ctx.prisma.follow.findMany({ where: { followerId: viewerId, creatorId: { in: ids } }, select: { creatorId: true } }) : Promise.resolve([]),
+  ]);
+  const videoAgg = new Map(videos.map((v) => [v.creatorId, v]));
+  const followerCount = new Map(followers.map((f) => [f.creatorId, f._count._all]));
+  const followed = new Set(mine.map((m) => m.creatorId));
+  return creators.map((c) => ({
+    id: c.id,
+    username: c.user.username,
+    channelName: c.channelName,
+    bio: c.bio,
+    videoCount: videoAgg.get(c.id)?._count._all ?? 0,
+    totalViews: videoAgg.get(c.id)?._sum.viewsCount ?? 0,
+    followersCount: followerCount.get(c.id) ?? 0,
+    ...(viewerId ? { following: followed.has(c.id) } : {}),
+    createdAt: c.createdAt.toISOString(),
+  }));
+}
+
+export async function getCreatorProfile(ctx: AppContext, id: string, viewerId?: string): Promise<CreatorProfileDto> {
   const creator = await ctx.prisma.creatorProfile.findUnique({ where: { id }, include: { user: { select: { username: true } } } });
   if (!creator) throw notFound('Creator not found');
-  const agg = await ctx.prisma.video.aggregate({ where: { creatorId: id, ...publicVideoWhere }, _count: { _all: true }, _sum: { viewsCount: true } });
-  return {
-    id: creator.id,
-    username: creator.user.username,
-    channelName: creator.channelName,
-    bio: creator.bio,
-    videoCount: agg._count._all,
-    totalViews: agg._sum.viewsCount ?? 0,
-    createdAt: creator.createdAt.toISOString(),
-  };
+  return (await creatorsToDto(ctx, [creator], viewerId))[0] as CreatorProfileDto;
+}
+
+/** Channels whose name or username matches the search; the most followed first. */
+export async function searchCreators(ctx: AppContext, q: string, viewerId?: string, limit = 6): Promise<CreatorProfileDto[]> {
+  const rows = await ctx.prisma.creatorProfile.findMany({
+    where: { OR: [{ channelName: { contains: q, mode: 'insensitive' } }, { user: { username: { contains: q, mode: 'insensitive' } } }] },
+    include: { user: { select: { username: true } } },
+    take: 50,
+  });
+  const dtos = await creatorsToDto(ctx, rows, viewerId);
+  return dtos.sort((a, b) => b.followersCount - a.followersCount || b.videoCount - a.videoCount || a.channelName.localeCompare(b.channelName)).slice(0, limit);
 }

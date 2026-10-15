@@ -77,6 +77,7 @@ model User {
   paidSegments   PaidSegment[]
   watchlist      WatchlistItem[]
   likes          VideoLike[]
+  following      Follow[]
 }
 
 model RefreshToken {
@@ -104,6 +105,21 @@ model CreatorProfile {
   videos      Video[]
   settlements PaymentSettlement[]
   liveStreams LiveStream[]
+  followers   Follow[]
+}
+
+/// A viewer following a channel: its new videos and live streams show up on their home page and Following page.
+model Follow {
+  id         String   @id @default(uuid())
+  followerId String
+  creatorId  String
+  createdAt  DateTime @default(now())
+
+  follower User           @relation(fields: [followerId], references: [id], onDelete: Cascade)
+  creator  CreatorProfile @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+
+  @@unique([followerId, creatorId])
+  @@index([creatorId])
 }
 
 model Video {

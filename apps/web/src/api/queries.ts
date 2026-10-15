@@ -1,6 +1,6 @@
 import { useQuery, type UseQueryOptions } from '@tanstack/react-query';
 import { useAuth } from '../auth/AuthContext';
-import { catalogApi, configApi, creatorApi, walletApi, watchApi } from './endpoints';
+import { catalogApi, configApi, creatorApi, socialApi, walletApi, watchApi } from './endpoints';
 
 export const keys = {
   config: ['config'] as const,
@@ -9,6 +9,9 @@ export const keys = {
   categories: ['categories'] as const,
   history: ['history'] as const,
   watchlist: ['watchlist'] as const,
+  following: ['following'] as const,
+  feed: ['following', 'feed'] as const,
+  owned: ['owned'] as const,
   creatorVideos: ['creator', 'videos'] as const,
   creatorAnalytics: ['creator', 'analytics'] as const,
   creatorEarnings: ['creator', 'earnings'] as const,
@@ -45,6 +48,14 @@ export function useContinueWatching() {
   const { user } = useAuth();
   return useQuery({ queryKey: ['continue-watching'], queryFn: watchApi.continueWatching, enabled: Boolean(user) });
 }
+
+/** Ids of the videos the signed-in viewer owns (bought or fully paid for), for the "Owned" mark on any card. */
+export function useOwnedIds(): Set<string> {
+  const { user } = useAuth();
+  const q = useQuery({ queryKey: keys.owned, queryFn: socialApi.owned, enabled: Boolean(user), staleTime: 60_000, select: (d) => new Set(d.videoIds) });
+  return (user && q.data) || EMPTY;
+}
+const EMPTY = new Set<string>();
 
 export function useCreatorEarnings(enabled: boolean) {
   // Poll only while a payout is on its way.

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { isObjectKey, type S3Store } from '@tesor_gp/storage';
-import { videoListQuery, type VideoListQuery } from '@tesor_gp/shared';
+import { creatorSearchQuery, videoListQuery, type CreatorSearchQuery, type VideoListQuery } from '@tesor_gp/shared';
 import type { AppContext } from '../../context';
 import { optionalAuth } from '../../middleware/auth';
 import { publicWhenAnonymous } from '../../middleware/http-cache';
@@ -52,8 +52,13 @@ export function catalogRoutes(ctx: AppContext): Router {
     res.json({ categories: await service.listCategories(ctx) });
   });
 
-  router.get('/creators/:id', publicWhenAnonymous(60), async (req, res) => {
-    res.json(await service.getCreatorProfile(ctx, String(req.params.id)));
+  router.get('/creators', publicWhenAnonymous(60), optional, validate('query', creatorSearchQuery), async (req, res) => {
+    const q = req.query as unknown as CreatorSearchQuery;
+    res.json({ items: q.q ? await service.searchCreators(ctx, q.q, req.user?.id) : [] });
+  });
+
+  router.get('/creators/:id', publicWhenAnonymous(60), optional, async (req, res) => {
+    res.json(await service.getCreatorProfile(ctx, String(req.params.id), req.user?.id));
   });
 
   return router;

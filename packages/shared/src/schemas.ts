@@ -205,6 +205,12 @@ export const videoListQuery = z.object({
   category: z.string().trim().max(40).optional(),
   creatorId: z.string().optional(),
   sort: z.enum(['newest', 'popular', 'trending']).default('newest'),
+  /** Free: no charge at all. Paid: charged per second, or sold by one price. */
+  price: z.enum(['free', 'paid']).optional(),
+  /** Short: under 4 minutes. Medium: 4 to 20. Long: over 20. */
+  length: z.enum(['short', 'medium', 'long']).optional(),
+  /** Only videos the signed-in viewer owns (bought, or fully paid for); ignored when signed out. */
+  owned: z.enum(['1', 'true']).optional(),
   cursor: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(PAGE_SIZE_MAX).default(PAGE_SIZE_DEFAULT),
 });
@@ -220,9 +226,15 @@ export const creatorProfileDto = z.object({
   bio: z.string().nullable(),
   videoCount: z.number(),
   totalViews: z.number(),
+  followersCount: z.number(),
+  /** Set for a signed-in viewer: whether they follow this channel. */
+  following: z.boolean().optional(),
   createdAt: isoDate,
 });
 export type CreatorProfileDto = z.infer<typeof creatorProfileDto>;
+
+export const creatorSearchQuery = z.object({ q: z.string().trim().max(100).optional() });
+export type CreatorSearchQuery = z.infer<typeof creatorSearchQuery>;
 
 // ---------- creator ----------
 export const createCreatorProfileRequest = z.object({

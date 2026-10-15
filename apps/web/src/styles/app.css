@@ -466,3 +466,11 @@ dl.stats { max-width: 720px; margin: 14px 0; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* Follow, owned and the Following page. */
+.thumb .badge.owned { position: absolute; left: 8px; top: 8px; background: rgba(17, 18, 20, 0.85); color: #ece7df; }
+.follow-count { font-variant-numeric: tabular-nums; opacity: 0.8; margin-left: 4px; }
+.channel-title { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.channel-list { list-style: none; padding: 0; margin: 0 0 24px; display: grid; gap: 8px; }
+.channel-item { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.channel-item .channel-name { font-weight: 600; flex: 1 1 auto; }

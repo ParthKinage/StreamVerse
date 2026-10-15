@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
 import { ApiError, errorMessage } from '../api/client';
 import { catalogApi } from '../api/endpoints';
+import { FollowButton, creatorKey } from '../components/FollowButton';
 import { ErrorState, PageSpinner } from '../components/States';
 import { EmptyState, VideoList } from '../components/VideoList';
 import { formatViews } from '../lib/format';
@@ -9,16 +10,19 @@ import NotFound from './NotFound';
 
 export default function Channel(): JSX.Element {
   const { id = '' } = useParams();
-  const q = useQuery({ queryKey: ['creator', id], queryFn: () => catalogApi.creator(id), retry: (n, e) => !(e instanceof ApiError && e.status === 404) && n < 2 });
+  const q = useQuery({ queryKey: creatorKey(id), queryFn: () => catalogApi.creator(id), retry: (n, e) => !(e instanceof ApiError && e.status === 404) && n < 2 });
   if (q.isPending) return <PageSpinner />;
   if (q.isError) return q.error instanceof ApiError && q.error.status === 404 ? <NotFound /> : <ErrorState message={errorMessage(q.error)} onRetry={() => void q.refetch()} />;
   const c = q.data;
   return (
     <div className="page">
       <header className="channel-head">
-        <h1>{c.channelName}</h1>
+        <div className="channel-title">
+          <h1>{c.channelName}</h1>
+          <FollowButton creatorId={c.id} />
+        </div>
         <p className="muted">
-          @{c.username} · {c.videoCount} video{c.videoCount === 1 ? '' : 's'} · {formatViews(c.totalViews)}
+          @{c.username} · {c.followersCount.toLocaleString()} follower{c.followersCount === 1 ? '' : 's'} · {c.videoCount} video{c.videoCount === 1 ? '' : 's'} · {formatViews(c.totalViews)}
         </p>
         {c.bio ? <p>{c.bio}</p> : null}
       </header>

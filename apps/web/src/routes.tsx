@@ -12,6 +12,7 @@ const Register = lazy(() => import('./pages/Register'));
 const WalletPage = lazy(() => import('./pages/Wallet'));
 const History = lazy(() => import('./pages/History'));
 const Watchlist = lazy(() => import('./pages/Watchlist'));
+const Following = lazy(() => import('./pages/Following'));
 const Studio = lazy(() => import('./pages/Studio'));
 const Settings = lazy(() => import('./pages/Settings'));
 const Admin = lazy(() => import('./pages/Admin'));
@@ -30,6 +31,7 @@ export const routes: RouteObject[] = [
       { path: '/wallet', element: <RequireAuth><WalletPage /></RequireAuth> },
       { path: '/history', element: <RequireAuth><History /></RequireAuth> },
       { path: '/watchlist', element: <RequireAuth><Watchlist /></RequireAuth> },
+      { path: '/following', element: <RequireAuth><Following /></RequireAuth> },
       { path: '/studio', element: <RequireAuth><Studio /></RequireAuth> },
       { path: '/settings', element: <RequireAuth><Settings /></RequireAuth> },
       { path: '/admin', element: <RequireAuth role="ADMIN"><Admin /></RequireAuth> },

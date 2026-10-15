@@ -350,7 +350,7 @@ describe('ending sessions', () => {
     expect(history.body.items[0]).toMatchObject({ sessionId: r.sid, watchedSeconds: 10, lastPositionSec: 12, paidWei: (3n * PIECE).toString() });
     expect(history.body.items[0].video.paidSeconds).toBe(12);
     const cont = await authed(h, viewer.user).get('/api/v1/me/continue-watching');
-    expect(cont.body.items[0]).toMatchObject({ positionSec: 12 });
+    expect(cont.body.items[0]).toMatchObject({ lastPositionSec: 12 });
     expect(cont.body.items[0].video.id).toBe(video.id);
     const next = await start(viewer, video.id);
     expect(next.body.resumePositionSec).toBe(12);
