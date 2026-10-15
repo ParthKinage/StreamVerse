@@ -25,11 +25,18 @@ interface Coin {
   r: number;
 }
 
+interface Props {
+  /** "panel": inside the small waiting panel. "full": across the whole screen, behind the loading message. */
+  variant?: 'panel' | 'full';
+}
+
 /**
- * A small game for waiting: move the tray (mouse, finger or arrow keys) to catch falling StreamCoins. It only runs
- * while it is on screen and the tab is visible, and draws with requestAnimationFrame, so it costs nothing otherwise.
+ * A small game for waiting: move the tray (mouse, finger or arrow keys) to catch falling StreamCoins. Sizes and speeds
+ * follow the canvas, so it plays the same in the panel and across the whole screen. It draws with
+ * requestAnimationFrame and does nothing while the tab is hidden.
  */
-export function CoinGame(): JSX.Element {
+export function CoinGame({ variant = 'panel' }: Props): JSX.Element {
+  const full = variant === 'full';
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [score, setScore] = useState(0);
   const [best, setBest] = useState(readBest);
@@ -39,12 +46,15 @@ export function CoinGame(): JSX.Element {
     const ctx = canvas?.getContext('2d');
     if (!canvas || !ctx) return undefined;
     const css = getComputedStyle(document.documentElement);
-    const sand = css.getPropertyValue('--accent').trim() || '#c8b79e';
-    const line = css.getPropertyValue('--line-strong').trim() || '#3d3a36';
-    const ink = css.getPropertyValue('--on-accent').trim() || '#121212';
+    const accent = css.getPropertyValue('--accent').trim() || '#b89b66';
+    const line = css.getPropertyValue('--line-strong').trim() || '#34405a';
+    const ink = css.getPropertyValue('--on-accent').trim() || '#0d111a';
 
     let width = 0;
     let height = 0;
+    const tray = { x: 0, w: 64, h: 6 };
+    let radius = 9;
+    let speed = 1;
     const resize = (): void => {
       const dpr = window.devicePixelRatio || 1;
       width = canvas.clientWidth;
@@ -52,10 +62,15 @@ export function CoinGame(): JSX.Element {
       canvas.width = Math.round(width * dpr);
       canvas.height = Math.round(height * dpr);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      // Scale with the play area: a coin takes about the same time to fall in the panel and on a full screen.
+      radius = full ? Math.max(11, Math.min(18, width / 70)) : 9;
+      tray.w = full ? Math.max(96, Math.min(180, width / 9)) : 64;
+      tray.h = full ? 8 : 6;
+      speed = height / 210;
     };
     resize();
+    tray.x = width / 2;
 
-    const tray = { x: width / 2, w: 64, h: 6 };
     let target = tray.x;
     const coins: Coin[] = [];
     const sparks: Array<{ x: number; y: number; life: number }> = [];
@@ -74,21 +89,23 @@ export function CoinGame(): JSX.Element {
     };
     const keyDown = (e: KeyboardEvent): void => onKey(e, true);
     const keyUp = (e: KeyboardEvent): void => onKey(e, false);
-    const point = (clientX: number): void => {
+    const onMove = (e: PointerEvent): void => {
       const rect = canvas.getBoundingClientRect();
-      target = Math.max(tray.w / 2, Math.min(width - tray.w / 2, clientX - rect.left));
+      target = e.clientX - rect.left;
     };
-    const onMove = (e: PointerEvent): void => point(e.clientX);
-    canvas.addEventListener('pointermove', onMove);
-    canvas.addEventListener('pointerdown', onMove);
-    canvas.addEventListener('keydown', keyDown);
-    canvas.addEventListener('keyup', keyUp);
+    // Full screen: the loading message sits on top of the canvas, so listen on the whole window.
+    const pointerTarget: HTMLElement | Window = full ? window : canvas;
+    const keyTarget: HTMLElement | Window = full ? window : canvas;
+    pointerTarget.addEventListener('pointermove', onMove as EventListener);
+    pointerTarget.addEventListener('pointerdown', onMove as EventListener);
+    keyTarget.addEventListener('keydown', keyDown as EventListener);
+    keyTarget.addEventListener('keyup', keyUp as EventListener);
     window.addEventListener('resize', resize);
 
     const drawCoin = (c: Coin): void => {
       ctx.beginPath();
       ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
-      ctx.fillStyle = sand;
+      ctx.fillStyle = accent;
       ctx.fill();
       ctx.fillStyle = ink;
       ctx.font = `700 ${Math.round(c.r * 1.1)}px Manrope, Inter, sans-serif`;
@@ -101,20 +118,20 @@ export function CoinGame(): JSX.Element {
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
       if (document.visibilityState === 'visible') {
-        // Move the tray toward the pointer, or with the arrow keys.
-        if (keys.left) target -= 360 * dt;
-        if (keys.right) target += 360 * dt;
+        if (keys.left) target -= width * 0.9 * dt;
+        if (keys.right) target += width * 0.9 * dt;
         target = Math.max(tray.w / 2, Math.min(width - tray.w / 2, target));
         tray.x += (target - tray.x) * Math.min(1, dt * 14);
 
-        // New coins arrive a little faster as the score grows.
+        // New coins arrive a little faster as the score grows; a wide screen gets more of them at once.
         spawnIn -= dt;
         if (spawnIn <= 0) {
-          coins.push({ x: 12 + Math.random() * (width - 24), y: -10, vy: 70 + Math.random() * 60 + caught * 2.5, r: 9 });
-          spawnIn = Math.max(0.35, 0.9 - caught * 0.015);
+          coins.push({ x: radius + 4 + Math.random() * (width - 2 * radius - 8), y: -radius, vy: (70 + Math.random() * 60 + caught * 2.5) * speed, r: radius });
+          const lanes = full ? Math.max(1, width / 420) : 1;
+          spawnIn = Math.max(0.3, 0.9 - caught * 0.015) / lanes;
         }
 
-        const trayY = height - 18;
+        const trayY = height - (full ? 28 : 18);
         for (let i = coins.length - 1; i >= 0; i--) {
           const c = coins[i]!;
           c.y += c.vy * dt;
@@ -145,12 +162,12 @@ export function CoinGame(): JSX.Element {
             continue;
           }
           ctx.globalAlpha = s.life;
-          ctx.fillStyle = sand;
-          ctx.font = '600 11px Inter, sans-serif';
-          ctx.fillText('+1', s.x, s.y - 14 - (1 - s.life) * 18);
+          ctx.fillStyle = accent;
+          ctx.font = `600 ${full ? 14 : 11}px Inter, sans-serif`;
+          ctx.fillText('+1', s.x, s.y - 14 - (1 - s.life) * 22);
           ctx.globalAlpha = 1;
         }
-        ctx.fillStyle = sand;
+        ctx.fillStyle = accent;
         ctx.fillRect(tray.x - tray.w / 2, trayY, tray.w, tray.h);
       }
       frame = requestAnimationFrame(tick);
@@ -159,24 +176,29 @@ export function CoinGame(): JSX.Element {
 
     return () => {
       cancelAnimationFrame(frame);
-      canvas.removeEventListener('pointermove', onMove);
-      canvas.removeEventListener('pointerdown', onMove);
-      canvas.removeEventListener('keydown', keyDown);
-      canvas.removeEventListener('keyup', keyUp);
+      pointerTarget.removeEventListener('pointermove', onMove as EventListener);
+      pointerTarget.removeEventListener('pointerdown', onMove as EventListener);
+      keyTarget.removeEventListener('keydown', keyDown as EventListener);
+      keyTarget.removeEventListener('keyup', keyUp as EventListener);
       window.removeEventListener('resize', resize);
     };
-  }, []);
+  }, [full]);
 
+  const label = 'Game: move the tray with the mouse, a finger or the arrow keys to catch falling StreamCoins';
+  if (full) {
+    return (
+      <>
+        <canvas ref={canvasRef} className="coin-game full" role="img" aria-label={label} data-testid="coin-game" />
+        <div className="coin-game-score" aria-live="off">
+          <span data-testid="coin-score">Caught {score}</span>
+          <span>Best {best}</span>
+        </div>
+      </>
+    );
+  }
   return (
     <div>
-      <canvas
-        ref={canvasRef}
-        className="coin-game"
-        tabIndex={0}
-        role="img"
-        aria-label="Game: move the tray with the mouse or the arrow keys to catch falling StreamCoins"
-        data-testid="coin-game"
-      />
+      <canvas ref={canvasRef} className="coin-game" tabIndex={0} role="img" aria-label={label} data-testid="coin-game" />
       <div className="coin-game-foot">
         <span data-testid="coin-score">Caught {score}</span>
         <span>Best {best}</span>

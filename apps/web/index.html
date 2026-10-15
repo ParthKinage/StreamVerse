@@ -19,12 +19,12 @@
     <style>
       /* First paint, before the app's code has downloaded: the wordmark and a brass line sweeping beneath it. */
       html, body { margin: 0; background: #0d111a; }
-      :root[data-theme='light'] body { background: #f1ece3; }
+      :where(:root[data-theme='light']) body { background: #f1ece3; }
       :root[data-theme='light'] .boot { color: #121826; }
       :root[data-theme='light'] .boot-line { background: #dcd4c6; }
       :root[data-theme='light'] .boot-line::after { background: #1f2e4d; }
       @media (prefers-color-scheme: light) {
-        :root:not([data-theme='dark']) body { background: #f1ece3; }
+        :where(:root:not([data-theme='dark'])) body { background: #f1ece3; }
         :root:not([data-theme='dark']) .boot { color: #121826; }
         :root:not([data-theme='dark']) .boot-line { background: #dcd4c6; }
         :root:not([data-theme='dark']) .boot-line::after { background: #1f2e4d; }
