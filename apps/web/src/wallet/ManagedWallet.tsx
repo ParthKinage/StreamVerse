@@ -100,13 +100,13 @@ export function ManagedWallet(): JSX.Element {
         ) : (
           <div className="stats">
             <Stat label="Available to spend" wei={summary?.availableWei} strong testId="managed-available" />
-            {arriving > 0n ? <Stat label="On its way" wei={summary?.arrivingWei} testId="managed-arriving" /> : null}
+            {arriving > 0n ? <Stat label="Being recorded" wei={summary?.arrivingWei} testId="managed-arriving" /> : null}
             <Stat label="Payments being confirmed" wei={summary?.unsettledChargesWei} />
           </div>
         )}
         {arriving > 0n ? (
           <p className="muted small" role="status">
-            {strm(arriving)} STRM is being written to the blockchain and will be available in a few seconds.
+            {strm(arriving)} STRM is already in your balance and is being recorded on the blockchain.
           </p>
         ) : null}
         <div className="actions">

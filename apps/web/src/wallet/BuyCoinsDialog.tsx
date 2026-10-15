@@ -1,37 +1,34 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import type { WalletSummary } from '@tesor_gp/shared';
 import { errorMessage } from '../api/client';
 import { walletApi } from '../api/endpoints';
 import { keys, useConfig, useWalletSummary } from '../api/queries';
 import { Field } from '../components/Field';
 import { Modal } from '../components/Modal';
 import { useToast } from '../components/Toasts';
-import { useChainRefresh } from '../hooks/useChainRefresh';
-import { strm, toBig } from '../lib/format';
+import { strm } from '../lib/format';
 import { parseMoneyInput } from '../lib/money';
 
 const QUICK = ['100', '250', '500', '1000'];
 
 interface Props {
   onClose(): void;
-  /** Called once the coins are in the wallet and can be spent. */
+  /** Called once the coins are in the wallet and can be spent (straight after the payment is accepted). */
   onDone?(): void;
   suggested?: string;
 }
 
-type Phase = { name: 'form' } | { name: 'arriving'; wei: bigint } | { name: 'slow'; wei: bigint } | { name: 'done'; wei: bigint };
+type Phase = { name: 'form' } | { name: 'done'; wei: bigint };
 
 /**
- * Buy StreamCoins for the built-in wallet. The payment is a demo bank payment (nothing real is charged); the platform
- * then writes the purchase to the blockchain and pays the network fee, so the buyer needs no crypto wallet and no gas.
+ * Buy StreamCoins for the built-in wallet. The payment is a demo bank payment (nothing real is charged). The coins can
+ * be spent at once; the platform records them on the blockchain in the background and pays the network fee, so the
+ * buyer needs no crypto wallet and no gas.
  */
 export function BuyCoinsDialog({ onClose, onDone, suggested }: Props): JSX.Element {
   const { data: config } = useConfig();
   const qc = useQueryClient();
   const toast = useToast();
-  const refresh = useChainRefresh();
-  // Keeps the balance query live while this dialog waits for the purchase to be confirmed.
   useWalletSummary();
   const accounts = config?.bankAccounts ?? [];
   const symbol = config?.fiatSymbol || '₹';
@@ -55,27 +52,15 @@ export function BuyCoinsDialog({ onClose, onDone, suggested }: Props): JSX.Eleme
     setError(null);
     if (amountError || !('wei' in parsed) || !chosen) return;
     const wei = parsed.wei;
-    const before = toBig(qc.getQueryData<WalletSummary>(keys.summary)?.availableWei);
     setBusy(true);
     try {
       const res = await walletApi.buyCoins(chosen, wei.toString());
+      // The coins count at once (the server includes them in the balance); the blockchain record follows by itself.
       qc.setQueryData(keys.summary, res.summary);
       void qc.invalidateQueries({ queryKey: keys.transactions });
-      setPhase({ name: 'arriving', wei });
-      // The purchase is accepted; now wait for it to be confirmed on the blockchain.
-      const result = { arrived: false };
-      await refresh((_b, after) => {
-        // Spendable only once the indexer has seen the confirmed credit, so wait for the balance itself to rise.
-        result.arrived = toBig(after.arrivingWei) === 0n && toBig(after.availableWei) >= before + wei;
-        return result.arrived;
-      });
-      if (result.arrived) {
-        setPhase({ name: 'done', wei });
-        toast.success(`${strm(wei)} STRM added to your wallet`);
-        onDone?.();
-      } else {
-        setPhase({ name: 'slow', wei });
-      }
+      setPhase({ name: 'done', wei });
+      toast.success(`${strm(wei)} STRM added to your wallet`);
+      onDone?.();
     } catch (err) {
       setError(errorMessage(err));
     } finally {
@@ -86,7 +71,8 @@ export function BuyCoinsDialog({ onClose, onDone, suggested }: Props): JSX.Eleme
   if (phase.name === 'done') {
     return (
       <Modal title="Coins added" onClose={onClose}>
-        <p data-testid="coins-confirmed">{strm(phase.wei)} STRM is now in your wallet.</p>
+        <p data-testid="coins-confirmed">{strm(phase.wei)} STRM is now in your wallet and ready to spend.</p>
+        <p className="muted small">It is being recorded on the blockchain in the background; nothing else to do.</p>
         <div className="actions">
           <button type="button" className="btn primary" onClick={onClose}>
             Done
@@ -95,23 +81,6 @@ export function BuyCoinsDialog({ onClose, onDone, suggested }: Props): JSX.Eleme
       </Modal>
     );
   }
-  if (phase.name === 'arriving' || phase.name === 'slow') {
-    return (
-      <Modal title="Payment accepted" onClose={onClose} locked={phase.name === 'arriving'}>
-        <p data-testid="coins-arriving" role="status">
-          {phase.name === 'arriving'
-            ? `Adding ${strm(phase.wei)} STRM to your wallet on the blockchain. This usually takes a few seconds.`
-            : `Your ${strm(phase.wei)} STRM is taking longer than usual. It is safe: it will appear in your wallet as soon as the blockchain confirms it.`}
-        </p>
-        <div className="actions">
-          <button type="button" className="btn" onClick={onClose} disabled={phase.name === 'arriving'}>
-            {phase.name === 'arriving' ? 'Please wait…' : 'Close'}
-          </button>
-        </div>
-      </Modal>
-    );
-  }
-
   return (
     <Modal title="Buy StreamCoins" onClose={onClose} locked={busy}>
       <form

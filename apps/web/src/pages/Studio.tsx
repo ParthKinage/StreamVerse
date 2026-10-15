@@ -8,7 +8,8 @@ import { Field } from '../components/Field';
 import { useToast } from '../components/Toasts';
 import { mapServerError, type FieldErrors } from '../lib/forms';
 import { EarningsCard } from '../components/EarningsCard';
-import { AnalyticsTab, UploadTab, VideosTab } from './studio/tabs';
+import { UploadTab, VideosTab } from './studio/tabs';
+import { AnalyticsTab } from './studio/AnalyticsTab';
 import { PageSpinner } from '../components/States';
 
 // The live sender carries a video encoder library; load it only when the creator opens this tab.

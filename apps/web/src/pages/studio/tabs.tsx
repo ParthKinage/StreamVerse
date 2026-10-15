@@ -1,4 +1,4 @@
-import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type DragEvent } from 'react';
 import { ALLOWED_UPLOAD_MIME, DEFAULT_RATE_PER_MINUTE_STRM, type VideoDto } from '@tesor_gp/shared';
 import { ApiError, errorMessage } from '../../api/client';
@@ -8,7 +8,7 @@ import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { Modal } from '../../components/Modal';
 import { EmptyState, ErrorState, Skeleton } from '../../components/States';
 import { useToast } from '../../components/Toasts';
-import { formatDuration, money, moneyTitle, timeAgo, costLabel } from '../../lib/format';
+import { formatDuration, moneyTitle, timeAgo, costLabel } from '../../lib/format';
 import { VideoFields, validateVideoForm, weiToPriceInput, type VideoFormValues } from './VideoForm';
 
 const ALLOWED_EXT = ['.mp4', '.mov', '.mkv', '.webm', '.avi'];
@@ -372,74 +372,5 @@ export function VideosTab({ onUpload }: { onUpload(): void }): JSX.Element {
         />
       ) : null}
     </>
-  );
-}
-
-export function AnalyticsTab(): JSX.Element {
-  const q = useQuery({ queryKey: keys.creatorAnalytics, queryFn: creatorApi.analytics });
-  if (q.isPending) return <Skeleton className="block" />;
-  if (q.isError) return <ErrorState message={errorMessage(q.error)} onRetry={() => void q.refetch()} />;
-  const a = q.data;
-  const maxMinutes = Math.max(1, ...a.daily.map((d) => d.watchSeconds));
-  return (
-    <div>
-      <div className="stats">
-        <div className="stat">
-          <p className="muted small">Views</p>
-          <p className="stat-value">{a.totalViews}</p>
-        </div>
-        <div className="stat">
-          <p className="muted small">Watch time</p>
-          <p className="stat-value">{Math.round(a.totalWatchSeconds / 60)} min</p>
-        </div>
-        <div className="stat strong">
-          <p className="muted small">Earned (settled)</p>
-          <p className="stat-value" title={moneyTitle(a.totalEarningsWei)}>
-            {money(a.totalEarningsWei)}
-          </p>
-        </div>
-      </div>
-      {a.videos.length === 0 ? (
-        <EmptyState title="No data yet">Analytics appear after viewers watch your videos.</EmptyState>
-      ) : (
-        <>
-          <h3>Last 30 days</h3>
-          {a.daily.length === 0 ? (
-            <p className="muted">No viewing in the last 30 days.</p>
-          ) : (
-            <ul className="bars" aria-label="Watch minutes per day">
-              {a.daily.map((d) => (
-                <li key={d.date} title={`${d.date}: ${Math.round(d.watchSeconds / 60)} min, ${d.views} views`}>
-                  <span style={{ height: `${Math.max(4, Math.round((d.watchSeconds / maxMinutes) * 100))}%` }} />
-                  <small>{d.date.slice(5)}</small>
-                </li>
-              ))}
-            </ul>
-          )}
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Video</th>
-                <th className="num">Views</th>
-                <th className="num">Watch minutes</th>
-                <th className="num">Earnings</th>
-              </tr>
-            </thead>
-            <tbody>
-              {a.videos.map((v) => (
-                <tr key={v.videoId}>
-                  <td>{v.title}</td>
-                  <td className="num">{v.views}</td>
-                  <td className="num">{Math.round(v.watchSeconds / 60)}</td>
-                  <td className="num" title={moneyTitle(v.earningsWei)}>
-                    {money(v.earningsWei)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </>
-      )}
-    </div>
   );
 }

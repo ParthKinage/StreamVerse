@@ -1,4 +1,5 @@
 import { useEffect, useRef, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 
 interface ModalProps {
   title: string;
@@ -8,7 +9,10 @@ interface ModalProps {
   locked?: boolean;
 }
 
-/** Accessible dialog: focus moves in, Escape closes, Tab stays inside. */
+/**
+ * Accessible dialog: focus moves in, Escape closes, Tab stays inside. It is rendered straight into <body>, so no
+ * animated or transformed page element can trap it (that made tall dialogs open partly above the screen).
+ */
 export function Modal({ title, onClose, children, locked = false }: ModalProps): JSX.Element {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -36,7 +40,7 @@ export function Modal({ title, onClose, children, locked = false }: ModalProps):
       firstEl.focus();
     }
   };
-  return (
+  return createPortal(
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && !locked && onClose()}>
       <div ref={ref} className="modal" role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} onKeyDown={onKeyDown}>
         <div className="modal-head">
@@ -47,6 +51,7 @@ export function Modal({ title, onClose, children, locked = false }: ModalProps):
         </div>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

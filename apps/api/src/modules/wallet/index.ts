@@ -1,3 +1,3 @@
 export { walletRoutes } from './wallet.routes';
-export { getBalances, type Balances } from './balance';
+export { getBalances, incomingCredits, type Balances } from './balance';
 export { getConfig } from './wallet.service';
