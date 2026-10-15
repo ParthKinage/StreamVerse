@@ -27,8 +27,9 @@ export default function Home(): JSX.Element {
   return (
     <div className="page">
       <section className="hero">
-        <h1>Pay only for what you watch</h1>
-        <p className="muted">Pay only for what you watch, by the second. Rewatching is free and skipped parts cost nothing.</p>
+        <p className="eyebrow">Pay only for what you watch</p>
+        <h1>Stories worth every second</h1>
+        <p className="muted">Watch by the second, or unlock a live stream once and keep it for good. Rewatching is free and skipped parts cost nothing.</p>
         {!user ? (
           <Link to="/register" className="btn primary big">
             Create a free account

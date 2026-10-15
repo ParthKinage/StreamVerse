@@ -3,7 +3,15 @@ import type { ReactNode } from 'react';
 export function PageSpinner({ label = 'Loading' }: { label?: string }): JSX.Element {
   return (
     <div className="page-spinner" role="status" aria-live="polite">
-      <span className="spinner" aria-hidden="true" />
+      <span className="loader-bars" aria-hidden="true">
+        <i />
+        <i />
+        <i />
+        <i />
+      </span>
+      <span className="wordmark" aria-hidden="true">
+        STREAMVERSE
+      </span>
       <span className="sr-only">{label}</span>
     </div>
   );
