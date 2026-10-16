@@ -10,6 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@sentry/react": "11.8.0",
     "@tanstack/react-query": "^5.104.1",
     "@tesor_gp/shared": "*",
     "ethers": "^6.17.0",

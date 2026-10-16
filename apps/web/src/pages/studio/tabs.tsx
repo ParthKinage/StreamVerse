@@ -190,6 +190,7 @@ export function UploadTab({ onUploaded }: { onUploaded(): void }): JSX.Element {
 }
 
 function StatusBadge({ video }: { video: VideoDto }): JSX.Element {
+  if (video.hiddenReason) return <span className="badge danger" title={video.hiddenReason}>Hidden by moderators</span>;
   if (video.processingStatus === 'FAILED') return <span className="badge danger">Failed</span>;
   if (video.processingStatus === 'COMPLETED') return video.isPublished ? <span className="badge ok">Published</span> : <span className="badge">Draft</span>;
   return <span className="badge warn">{video.processingStatus === 'PENDING' ? 'Queued' : `Processing ${video.transcodeProgress}%`}</span>;

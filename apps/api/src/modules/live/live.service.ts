@@ -53,14 +53,16 @@ export async function viewerCount(ctx: AppContext, videoId: string): Promise<num
 }
 
 async function toDto(ctx: AppContext, s: StreamRow): Promise<LiveStreamDto> {
-  const [viewers, totals, last, sold, feeBps] = await Promise.all([
+  const [viewers, totals, last, sold, tips, feeBps] = await Promise.all([
     viewerCount(ctx, s.videoId),
     ctx.prisma.liveSegment.aggregate({ where: { liveStreamId: s.id }, _sum: { durationMs: true } }),
     ctx.prisma.liveSegment.findFirst({ where: { liveStreamId: s.id }, orderBy: { index: 'desc' }, select: { index: true } }),
     ctx.prisma.videoPurchase.aggregate({ where: { videoId: s.videoId }, _sum: { amountSTRM: true }, _count: { _all: true } }),
+    ctx.prisma.tip.aggregate({ where: { liveStreamId: s.id }, _sum: { amountSTRM: true }, _count: { _all: true } }),
     getFeeBps(ctx),
   ]);
   const gross = sold._sum.amountSTRM ? toWei(sold._sum.amountSTRM) : 0n;
+  const tipped = tips._sum.amountSTRM ? toWei(tips._sum.amountSTRM) : 0n;
   const peak = Math.max(s.peakViewers, viewers);
   if (peak > s.peakViewers) await ctx.prisma.liveStream.update({ where: { id: s.id }, data: { peakViewers: peak } });
   return {
@@ -70,6 +72,8 @@ async function toDto(ctx: AppContext, s: StreamRow): Promise<LiveStreamDto> {
     title: s.video.title,
     priceWei: weiToString(s.video.accessPriceSTRM ? toWei(s.video.accessPriceSTRM) : 0n),
     buyers: sold._count._all,
+    tipsWei: weiToString(tipped),
+    tipsCount: tips._count._all,
     saveAsVod: s.saveAsVod,
     createdAt: s.createdAt.toISOString(),
     startedAt: s.startedAt?.toISOString() ?? null,
@@ -78,7 +82,7 @@ async function toDto(ctx: AppContext, s: StreamRow): Promise<LiveStreamDto> {
     viewers,
     peakViewers: peak,
     durationSeconds: Math.floor((totals._sum.durationMs ?? 0) / 1000),
-    earnedWei: weiToString(splitFee(gross, feeBps).creator),
+    earnedWei: weiToString(splitFee(gross + tipped, feeBps).creator),
     initSeq: s.initSeq,
     nextIndex: last ? last.index + 1 : 0,
   };

@@ -6,8 +6,9 @@ import { EmptyState, ErrorState, Skeleton } from '../components/States';
 import { useToast } from '../components/Toasts';
 import { useConfig } from '../api/queries';
 import { money, moneyTitle, shortAddress, strm, timeAgo } from '../lib/format';
+import { Reports } from './admin/Reports';
 
-type Tab = 'revenue' | 'health' | 'settlements' | 'videos' | 'users';
+type Tab = 'reports' | 'revenue' | 'health' | 'settlements' | 'videos' | 'users';
 
 function Health(): JSX.Element {
   const q = useQuery({ queryKey: ['admin', 'health'], queryFn: adminApi.health, refetchInterval: 10_000 });
@@ -234,8 +235,40 @@ function Videos(): JSX.Element {
               <tr key={v.id}>
                 <td>{v.title}</td>
                 <td>{v.creator.channelName}</td>
-                <td>{v.isPublished ? 'Published' : v.processingStatus}</td>
-                <td>
+                <td>{v.hiddenReason ? `Hidden: ${v.hiddenReason}` : v.isPublished ? 'Published' : v.processingStatus}</td>
+                <td className="actions">
+                  {v.hiddenReason ? (
+                    <button
+                      type="button"
+                      className="btn small"
+                      onClick={() =>
+                        void adminApi
+                          .unhide(v.id)
+                          .then(() => qc.invalidateQueries({ queryKey: ['admin'] }))
+                          .catch((err) => toast.error(errorMessage(err)))
+                      }
+                    >
+                      Restore
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn small danger"
+                      onClick={() => {
+                        const reason = window.prompt('Reason for hiding (shown to the creator; optional)');
+                        if (reason === null) return;
+                        void adminApi
+                          .hide(v.id, reason.trim() || undefined)
+                          .then(() => {
+                            toast.success('Video hidden');
+                            return qc.invalidateQueries({ queryKey: ['admin'] });
+                          })
+                          .catch((err) => toast.error(errorMessage(err)));
+                      }}
+                    >
+                      Hide
+                    </button>
+                  )}
                   {v.isPublished ? (
                     <button
                       type="button"
@@ -264,7 +297,23 @@ function Videos(): JSX.Element {
 }
 
 function Users(): JSX.Element {
+  const qc = useQueryClient();
+  const toast = useToast();
   const [term, setTerm] = useState('');
+  const toggleSuspend = (id: string, suspended: boolean): void => {
+    let reason: string | undefined;
+    if (!suspended) {
+      const typed = window.prompt('Reason for suspending (optional)');
+      if (typed === null) return;
+      reason = typed.trim() || undefined;
+    }
+    void (suspended ? adminApi.unsuspend(id) : adminApi.suspend(id, reason))
+      .then(() => {
+        toast.success(suspended ? 'Account restored' : 'Account suspended');
+        return qc.invalidateQueries({ queryKey: ['admin'] });
+      })
+      .catch((err) => toast.error(errorMessage(err)));
+  };
   const q = useInfiniteQuery({
     queryKey: ['admin', 'users', term],
     queryFn: ({ pageParam }) => adminApi.users(term || undefined, pageParam),
@@ -291,6 +340,8 @@ function Users(): JSX.Element {
               <th>Email</th>
               <th>Role</th>
               <th>Wallet</th>
+              <th>Status</th>
+              <th />
             </tr>
           </thead>
           <tbody>
@@ -300,6 +351,14 @@ function Users(): JSX.Element {
                 <td>{u.email}</td>
                 <td>{u.role}</td>
                 <td>{shortAddress(u.walletAddress) || '—'}</td>
+                <td>{u.suspended ? <span className="badge danger" title={u.suspendReason ?? undefined}>Suspended</span> : 'Active'}</td>
+                <td>
+                  {u.role !== 'ADMIN' ? (
+                    <button type="button" className={u.suspended ? 'btn small' : 'btn small danger'} onClick={() => toggleSuspend(u.id, Boolean(u.suspended))}>
+                      {u.suspended ? 'Restore' : 'Suspend'}
+                    </button>
+                  ) : null}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -310,8 +369,9 @@ function Users(): JSX.Element {
 }
 
 export default function Admin(): JSX.Element {
-  const [tab, setTab] = useState<Tab>('revenue');
+  const [tab, setTab] = useState<Tab>('reports');
   const tabs: Array<[Tab, string]> = [
+    ['reports', 'Reports'],
     ['revenue', 'Revenue'],
     ['health', 'Health'],
     ['settlements', 'Settlements'],
@@ -328,6 +388,7 @@ export default function Admin(): JSX.Element {
           </button>
         ))}
       </div>
+      {tab === 'reports' ? <Reports /> : null}
       {tab === 'revenue' ? <Revenue /> : null}
       {tab === 'health' ? <Health /> : null}
       {tab === 'settlements' ? <Settlements /> : null}

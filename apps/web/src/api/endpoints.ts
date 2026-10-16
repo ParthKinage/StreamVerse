@@ -21,7 +21,12 @@ import type {
   ReceivedPaymentsResponse,
   UpdateVideoRequest,
   ChatMessageDto,
+  AdminOverview,
+  AdminReportItem,
+  CreateReportRequest,
+  ResolveReportRequest,
   ChatResponse,
+  SendTipResponse,
   PurchaseResponse,
   CreateLiveRequest,
   LiveStreamDto,
@@ -167,6 +172,9 @@ export const liveApi = {
   /** Chat is the same for everyone, so it is read without the login header (the edge may serve it for 2 s). */
   chat: (streamId: string, after?: number) => api<ChatResponse>(`/live/${encodeURIComponent(streamId)}/chat`, { query: { after }, anonymous: true }),
   postChat: (streamId: string, text: string) => api<ChatMessageDto>(`/live/${encodeURIComponent(streamId)}/chat`, { method: 'POST', body: { text } }),
+  /** A tip during a live stream; the message (optional) shows with it in the chat. */
+  tip: (streamId: string, amountWei: string, message?: string) =>
+    api<SendTipResponse>(`/live/${encodeURIComponent(streamId)}/tips`, { method: 'POST', body: { amountWei, ...(message ? { message } : {}) } }),
   removeChat: (streamId: string, messageId: number) => api<void>(`/live/${encodeURIComponent(streamId)}/chat/${messageId}`, { method: 'DELETE' }),
 };
 
@@ -178,4 +186,15 @@ export const adminApi = {
   retrySettlement: (id: string) => api<{ queued: boolean }>(`/admin/settlements/${encodeURIComponent(id)}/retry`, { method: 'POST' }),
   health: () => api<HealthReport>('/admin/health'),
   revenue: () => api<AdminRevenue>('/admin/revenue'),
+  overview: () => api<AdminOverview>('/admin/overview'),
+  reports: (status: 'OPEN' | 'ACTIONED' | 'DISMISSED' = 'OPEN') => api<{ items: AdminReportItem[] }>('/admin/reports', { query: { status } }),
+  resolve: (b: ResolveReportRequest) => api<{ resolved: number }>('/admin/reports/resolve', { method: 'POST', body: b }),
+  suspend: (userId: string, reason?: string) => api<void>(`/admin/users/${encodeURIComponent(userId)}/suspend`, { method: 'POST', body: reason ? { reason } : {} }),
+  unsuspend: (userId: string) => api<void>(`/admin/users/${encodeURIComponent(userId)}/unsuspend`, { method: 'POST', body: {} }),
+  hide: (videoId: string, reason?: string) => api<void>(`/admin/videos/${encodeURIComponent(videoId)}/hide`, { method: 'POST', body: reason ? { reason } : {} }),
+  unhide: (videoId: string) => api<void>(`/admin/videos/${encodeURIComponent(videoId)}/unhide`, { method: 'POST', body: {} }),
+};
+
+export const reportApi = {
+  create: (b: CreateReportRequest) => api<{ reported: true }>('/reports', { method: 'POST', body: b }),
 };

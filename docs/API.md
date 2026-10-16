@@ -116,6 +116,7 @@ pay per piece exactly as for videos. Creator endpoints need a bearer token and a
 | `GET /live/:streamId/chat?after=<id>` | Public. The latest 50 messages, or up to 100 newer than `after` (oldest first): `{items: [{id, text, createdAt, user: {id, username}, fromCreator}], removed: [ids removed in the last 5 minutes], open}`. Cacheable for 2 s when anonymous |
 | `POST /live/:streamId/chat` `{text}` | 1 to 300 characters. Needs access (bought, free stream, creator or admin): otherwise `402 PURCHASE_REQUIRED`. `409 CHAT_CLOSED` once the stream has ended. 5 messages per 10 s per person (`429`) |
 | `DELETE /live/:streamId/chat/:messageId` | The stream's creator or an admin. 204 |
+| `POST /live/:streamId/tips` `{amountWei, message?}` | 201 `{message, availableWei}`: the tip's chat message (with `tipWei`) and the viewer's new balance. 1 to 1000 per tip (`400`); same access as chat (`402 PURCHASE_REQUIRED`); `402 INSUFFICIENT_BALANCE`; `400` on your own stream; `409 LIVE_NOT_ACTIVE` after the end; 10 per minute per person. Paid as one settlement with the usual platform fee. Chat messages carry `tipWei` (null for plain messages), and the creator's stream stats carry `tipsWei` and `tipsCount` |
 
 While a stream is on air, `/playback/:session/master.m3u8` and `src/index.m3u8` are built from the database (no end
 tag); `src/init_<n>.mp4` is free; `src/seg_<n>.m4s` is charged like any piece.
@@ -139,10 +140,21 @@ Heartbeat rules (server clock only; clients never send durations or amounts):
 4. There is no segment budget any more: fetching ahead costs the viewer money (the player buffers at most 10 s).
 5. A session with no heartbeat for 45 s is ended by the reaper like an explicit end.
 
+## Reports
+
+| Endpoint | Notes |
+|---|---|
+| `POST /reports` `{targetType: VIDEO \| CHAT_MESSAGE \| CHANNEL, targetId, reason: SPAM \| ABUSE \| SEXUAL \| COPYRIGHT \| OTHER, details?}` | Signed in. 201 `{reported: true}`. One report per person and item (repeating updates it). `404` for an unknown item, 20 an hour per person |
+
 ## Admin (role `ADMIN`)
 
 | Endpoint | Notes |
 |---|---|
+| `GET /admin/overview` | `{openReports, newUsers7d, tipsTodayWei, suspendedUsers, hiddenVideos}` |
+| `GET /admin/reports?status=OPEN\|ACTIONED\|DISMISSED` | Reported items, grouped: `{targetType, targetId, count, reasons, details, latestAt, target: {label, ownerUserId, ownerUsername, videoId, state}}`, most reported first |
+| `POST /admin/reports/resolve` `{targetType, targetId, action: dismiss \| hide_video \| remove_message \| suspend_owner, reason?}` | Acts on the item and closes its open reports (`ACTIONED`, or `DISMISSED` for dismiss). `{resolved}` |
+| `POST /admin/videos/:id/hide` `{reason?}`, `/unhide` | Hidden videos leave every list and cannot be played; the creator cannot republish them |
+| `POST /admin/users/:id/suspend` `{reason?}`, `/unsuspend` | Takes effect at once (`403 ACCOUNT_SUSPENDED`); admins cannot be suspended. Admin user lists carry `suspended` and `suspendReason` |
 | `GET /admin/users`, `GET /admin/videos` | Paged lists |
 | `POST /admin/videos/:id/unpublish` | Moderation |
 | `GET /admin/settlements` | Includes `status`, `attempts`, `lastError`, `txHash` |

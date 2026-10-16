@@ -40,6 +40,10 @@ export const MAX_ACCESS_PRICE_STRM = 1000;
 /** Access bought once never runs out; stored as an expiry far in the future. */
 export const PERMANENT_ACCESS_UNTIL = '9999-12-31T00:00:00.000Z';
 export const CHAT_MAX_LENGTH = 300;
+/** Tips during a live stream: quick amounts offered in the chat, and the allowed range for any amount. */
+export const TIP_PRESETS_STRM = [10, 50, 100] as const;
+export const MIN_TIP_STRM = 1;
+export const MAX_TIP_STRM = 1000;
 /** Names of the files a live stream is made of: init_<run>.mp4, seg_<index>.m4s and one thumbnail. */
 export const LIVE_FILE_NAME_RE = /^(init_\d{1,4}\.mp4|seg_\d{6}\.m4s|thumbnail\.jpg)$/;
 export const liveSegmentName = (index: number): string => `seg_${String(index).padStart(6, '0')}.m4s`;
@@ -65,6 +69,7 @@ export const DOMAIN_EVENTS = {
   STREAM_CREATED: 'live.stream.created',
   STREAM_STARTED: 'live.stream.started',
   STREAM_ENDED: 'live.stream.ended',
+  TIP_SENT: 'live.tip.sent',
 } as const;
 export type DomainEventName = (typeof DOMAIN_EVENTS)[keyof typeof DOMAIN_EVENTS];
 
@@ -109,6 +114,8 @@ export const ERROR_CODES = [
   'LIVE_NOT_ACTIVE',
   'LIVE_SEGMENT_INVALID',
   'CHAT_CLOSED',
+  'ACCOUNT_SUSPENDED',
+  'VIDEO_HIDDEN',
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];
 

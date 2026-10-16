@@ -523,3 +523,18 @@ dl.stats { max-width: 720px; margin: 14px 0; }
   .wake-panel { bottom: 84px; }
   .toasts { bottom: 84px; }
 }
+
+/* Tips in live chat */
+.chat-list li.chat-tip { border-left: 2px solid var(--accent); padding: 6px 8px; background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.tip-amount { font-weight: 600; color: var(--accent); margin-right: 4px; font-variant-numeric: tabular-nums; }
+.tip-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
+.tip-label { font-size: 0.7rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-3); margin-right: 2px; }
+.tip-choice { background: transparent; border: 1px solid var(--line-strong); color: var(--text-2); font: inherit; font-size: 0.8rem; padding: 6px 10px; cursor: pointer; font-variant-numeric: tabular-nums; }
+.tip-choice.active { border-color: var(--accent); color: var(--text); }
+.tip-other { width: 80px; }
+.tip-bar .btn { margin-left: auto; }
+
+/* Reports */
+.report-reasons { border: none; display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
+.btn.ghost { background: transparent; border-color: transparent; color: var(--text-3); }
+.btn.ghost:hover { color: var(--text); }

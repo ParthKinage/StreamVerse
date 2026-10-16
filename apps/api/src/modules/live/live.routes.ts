@@ -7,6 +7,7 @@ import {
   createLiveRequest,
   liveUploadUrlsRequest,
   postChatRequest,
+  sendTipRequest,
   startLiveRequest,
 } from '@tesor_gp/shared';
 import type { AppContext } from '../../context';
@@ -17,6 +18,7 @@ import { createRateLimiter } from '../../middleware/rateLimit';
 import { validate } from '../../middleware/validate';
 import * as service from './live.service';
 import * as chat from './chat.service';
+import { sendTip } from './tips.service';
 
 export function liveRoutes(ctx: AppContext): Router {
   const router = Router();
@@ -48,6 +50,13 @@ export function liveRoutes(ctx: AppContext): Router {
     const role = (await ctx.prisma.user.findUniqueOrThrow({ where: { id: userId(req) }, select: { role: true } })).role;
     await chat.removeChat(ctx, { id: userId(req), role }, String(req.params.streamId), messageId);
     res.status(204).end();
+  });
+
+  // ---------- tips ----------
+  const tipLimit = createRateLimiter(ctx, { name: 'live-tip', max: 10, windowMs: 60_000, keyByUser: true });
+  router.post('/live/:streamId/tips', auth, tipLimit, validate('body', sendTipRequest), async (req, res) => {
+    const role = (await ctx.prisma.user.findUniqueOrThrow({ where: { id: userId(req) }, select: { role: true } })).role;
+    res.status(201).json(await sendTip(ctx, { id: userId(req), role }, String(req.params.streamId), req.body));
   });
 
   // ---------- creators ----------

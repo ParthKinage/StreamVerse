@@ -128,6 +128,9 @@ export async function updateVideo(ctx: AppContext, userId: string, videoId: stri
 
 export async function setPublished(ctx: AppContext, userId: string, videoId: string, published: boolean): Promise<VideoDto> {
   const video = await ownedVideo(ctx, userId, videoId);
+  if (published && video.hiddenAt) {
+    throw conflict('VIDEO_HIDDEN', `A moderator hid this video${video.hiddenReason ? `: ${video.hiddenReason}` : ''}. Contact support to have it reviewed.`);
+  }
   if (published && video.processingStatus !== 'COMPLETED') {
     throw conflict('VIDEO_NOT_AVAILABLE', 'The video can be published once transcoding has completed');
   }

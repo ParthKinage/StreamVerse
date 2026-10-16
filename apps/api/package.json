@@ -12,6 +12,7 @@
     "reconcile": "tsx src/scripts/reconcile.ts"
   },
   "dependencies": {
+    "@sentry/node": "11.8.0",
     "@tesor_gp/blockchain": "*",
     "@tesor_gp/database": "*",
     "@tesor_gp/shared": "*",

@@ -125,6 +125,8 @@ const schema = z
     LIVE_IDLE_TIMEOUT_SEC: num(60),
     /** Recommendation service. When unset, recommendations use the trending fallback at once (no network call). */
     AI_SERVICE_URL: z.string().url().optional(),
+    /** Error tracking (Sentry). Off when unset. */
+    SENTRY_DSN: z.string().url().optional(),
     AI_TIMEOUT_MS: num(800),
     AI_FALLBACK_MODE: z.string().default('trending'),
     RATE_LIMIT_MAX: num(300),

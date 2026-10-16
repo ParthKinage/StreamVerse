@@ -14,6 +14,7 @@ import { VideoCard } from '../components/VideoCard';
 import { formatDuration, formatViews, money, costLabel, timeAgo, toBig } from '../lib/format';
 import { Player } from '../player/Player';
 import { LiveChat } from '../live/LiveChat';
+import { ReportDialog } from '../components/ReportDialog';
 import { usePlaybackSession } from '../player/usePlaybackSession';
 import { BuyCoinsDialog } from '../wallet/BuyCoinsDialog';
 import { TopUpDialog } from '../wallet/TopUpDialog';
@@ -45,6 +46,7 @@ export default function Watch(): JSX.Element {
   const walletReady = bank || managed || Boolean(user?.walletAddress) || !config;
   const [topUp, setTopUp] = useState(false);
   const [buying, setBuying] = useState(false);
+  const [reporting, setReporting] = useState(false);
   const sessionPhase = session.state.phase;
   useEffect(() => {
     // After a session, refresh the video so "already paid" and the balance are current.
@@ -214,7 +216,13 @@ export default function Watch(): JSX.Element {
           <button type="button" className={`btn ${video.inWatchlist ? 'primary' : ''}`} aria-pressed={Boolean(video.inWatchlist)} onClick={() => void toggle('watchlist')}>
             {video.inWatchlist ? 'In watchlist' : 'Add to watchlist'}
           </button>
+          {user && !isOwner ? (
+            <button type="button" className="btn ghost" onClick={() => setReporting(true)} data-testid="report-video">
+              Report
+            </button>
+          ) : null}
         </div>
+        {reporting ? <ReportDialog targetType="VIDEO" targetId={video.id} onClose={() => setReporting(false)} /> : null}
         {video.description ? <p className="description">{video.description}</p> : null}
         {video.tags.length ? (
           <ul className="chips">
@@ -235,7 +243,17 @@ export default function Watch(): JSX.Element {
       </div>
       <aside className="watch-side" aria-label="Up next">
         {video.live && (video.live.status === 'LIVE' || video.live.status === 'ENDED') ? (
-          <LiveChat streamId={video.live.streamId} live={onAir} postBlockedReason={chatBlockedReason} canModerate={isOwner || user?.role === 'ADMIN'} />
+          <LiveChat
+            streamId={video.live.streamId}
+            live={onAir}
+            postBlockedReason={chatBlockedReason}
+            canModerate={isOwner || user?.role === 'ADMIN'}
+            canTip={Boolean(user) && !isOwner && walletReady}
+            canReport={Boolean(user)}
+            {...(user ? { myId: user.id } : {})}
+            onTipped={() => void qc.invalidateQueries({ queryKey: keys.summary })}
+            onNeedMoney={() => setTopUp(true)}
+          />
         ) : null}
         <h2>Up next</h2>
         {recs.isPending ? (

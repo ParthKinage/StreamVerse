@@ -46,6 +46,7 @@ export async function readChat(ctx: AppContext, streamId: string, after?: number
     createdAt: m.createdAt.toISOString(),
     user: { id: m.userId, username: m.user.username },
     fromCreator: m.userId === s.creator.userId,
+    tipWei: m.tipSTRM ? toWei(m.tipSTRM).toString() : null,
   }));
   return { items, removed: removed.map((r) => r.id), open: OPEN_STATES.has(s.status) };
 }

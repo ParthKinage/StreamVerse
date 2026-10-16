@@ -24,6 +24,7 @@ import { usersRoutes } from './modules/users';
 import { walletRoutes } from './modules/wallet';
 import { watchRoutes } from './modules/watch';
 import { liveRoutes } from './modules/live';
+import { moderationRoutes } from './modules/moderation';
 
 export function createApp(ctx: AppContext): express.Express {
   const app = express();
@@ -66,6 +67,7 @@ export function createApp(ctx: AppContext): express.Express {
     socialRoutes(ctx),
     adminRoutes(ctx),
     liveRoutes(ctx),
+    moderationRoutes(ctx),
   ]) {
     api.use(router);
   }

@@ -2,7 +2,7 @@ import type { Request, RequestHandler } from 'express';
 import jwt from 'jsonwebtoken';
 import type { Role } from '@tesor_gp/shared';
 import type { AppContext } from '../context';
-import { forbidden, unauthenticated } from './errors';
+import { AppError, forbidden, unauthenticated } from './errors';
 
 export interface AuthUser {
   id: string;
@@ -35,13 +35,45 @@ function parseBearer(req: Request, secret: string): AuthUser | null {
   }
 }
 
-/** Rejects requests without a valid access token. */
-export function requireAuth(ctx: Pick<AppContext, 'env'>): RequestHandler {
+/**
+ * Suspension is checked on every signed-in request, so it takes effect at once instead of when the access token
+ * expires. The answer is kept for a few seconds per user so this costs at most one small query per user every
+ * SUSPENSION_CACHE_MS; suspending or restoring an account clears its entry.
+ */
+const SUSPENSION_CACHE_MS = 30_000;
+const suspension = new Map<string, { suspended: boolean; until: number }>();
+
+export function forgetSuspension(userId: string): void {
+  suspension.delete(userId);
+}
+
+async function isSuspended(ctx: Pick<AppContext, 'prisma'>, userId: string): Promise<boolean> {
+  const hit = suspension.get(userId);
+  if (hit && hit.until > Date.now()) return hit.suspended;
+  try {
+    const row = await ctx.prisma.user.findUnique({ where: { id: userId }, select: { suspendedAt: true } });
+    const suspended = Boolean(row?.suspendedAt);
+    if (suspension.size > 10_000) suspension.clear();
+    suspension.set(userId, { suspended, until: Date.now() + SUSPENSION_CACHE_MS });
+    return suspended;
+  } catch {
+    // A database hiccup must not lock everyone out; the next request checks again.
+    return false;
+  }
+}
+
+export const accountSuspended = (): AppError => new AppError(403, 'ACCOUNT_SUSPENDED', 'This account has been suspended. Contact support if you think this is a mistake.');
+
+/** Rejects requests without a valid access token, or from a suspended account. */
+export function requireAuth(ctx: Pick<AppContext, 'env' | 'prisma'>): RequestHandler {
   return (req, _res, next) => {
     const user = parseBearer(req, ctx.env.JWT_SECRET);
     if (!user) return next(unauthenticated('Missing or invalid access token'));
     req.user = user;
-    next();
+    isSuspended(ctx, user.id).then(
+      (suspended) => next(suspended ? accountSuspended() : undefined),
+      (err) => next(err),
+    );
   };
 }
 

@@ -1,4 +1,5 @@
 import type { ErrorRequestHandler, RequestHandler } from 'express';
+import { captureError } from '../infra/monitoring';
 import { ZodError } from 'zod';
 import type { Logger } from '../infra/logger';
 import { AppError } from './errors';
@@ -39,6 +40,7 @@ export function errorHandler(logger: Logger): ErrorRequestHandler {
       return;
     }
     logger.error({ err, reqId: (req as { id?: unknown }).id, path: req.path }, 'unhandled error');
+    captureError(err, { reqId: (req as { id?: unknown }).id, path: req.path, method: req.method });
     res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Something went wrong' } });
   };
 }
