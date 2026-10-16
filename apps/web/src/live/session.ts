@@ -16,6 +16,28 @@ export interface LiveSessionState {
   mediaError: string | null;
   /** Null until the creator presses Go live. */
   status: SenderStatus | null;
+  /** The picture goes through the mixer (shown in a canvas); the camera can then be switched while live. */
+  mixed: boolean;
+  /** Which way the camera faces, when the device says (phones); null on most computers. */
+  facing: 'user' | 'environment' | null;
+}
+
+/** Opens one camera: a given device, or the one facing a given way (front or back on a phone). */
+function openCamera(pick: { deviceId?: string; facing?: 'user' | 'environment' }, audio: MediaTrackConstraints | boolean): Promise<MediaStream> {
+  return navigator.mediaDevices.getUserMedia({
+    video: {
+      ...(pick.deviceId ? { deviceId: { exact: pick.deviceId } } : pick.facing ? { facingMode: { exact: pick.facing } } : {}),
+      width: { ideal: 1280 },
+      height: { ideal: 720 },
+      frameRate: { ideal: 30 },
+    },
+    audio,
+  });
+}
+
+function facingOf(track: MediaStreamTrack | undefined): 'user' | 'environment' | null {
+  const f = track?.getSettings().facingMode;
+  return f === 'user' || f === 'environment' ? f : null;
 }
 
 const SENDING = new Set(['connecting', 'live', 'stopping']);
@@ -30,7 +52,7 @@ export function isSending(s: LiveSessionState): boolean {
  * (closing asks first).
  */
 class LiveSession {
-  private state: LiveSessionState = { streamId: null, source: 'camera', hasMedia: false, mediaError: null, status: null };
+  private state: LiveSessionState = { streamId: null, source: 'camera', hasMedia: false, mediaError: null, status: null, mixed: false, facing: null };
   private readonly listeners = new Set<() => void>();
   private media: MediaStream | null = null;
   private compositor: Compositor | null = null;
@@ -73,16 +95,18 @@ class LiveSession {
     const opened: MediaStream[] = [];
     try {
       const mic: MediaTrackConstraints | boolean = devices.micId ? { deviceId: { exact: devices.micId } } : true;
-      const camera = (): Promise<MediaStream> =>
-        navigator.mediaDevices.getUserMedia({
-          video: { ...(devices.cameraId ? { deviceId: { exact: devices.cameraId } } : {}), width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
-          audio: mic,
-        });
+      const camera = (): Promise<MediaStream> => openCamera(devices.cameraId ? { deviceId: devices.cameraId } : {}, mic);
       let media: MediaStream;
       let compositor: Compositor | null = null;
       if (source === 'camera') {
         media = await camera();
         opened.push(media);
+        // Through the mixer when the browser can, so the camera can be switched while live.
+        const cameraTrack = media.getVideoTracks()[0];
+        if (cameraTrack && canComposite()) {
+          compositor = new Compositor(null, cameraTrack);
+          compositor.start();
+        }
       } else {
         if (source === 'both' && !canComposite()) throw new BrowserCannotStream('This browser cannot mix a screen and a camera. Use a recent Chrome or Edge.');
         const screen = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 30 }, audio: true });
@@ -104,7 +128,7 @@ class LiveSession {
       this.release();
       this.media = media;
       this.compositor = compositor;
-      this.set({ streamId, source, hasMedia: true, status: null });
+      this.set({ streamId, source, hasMedia: true, status: null, mixed: Boolean(compositor), facing: facingOf(source === 'both' ? media.getVideoTracks()[1] : source === 'camera' ? media.getVideoTracks()[0] : undefined) });
       this.attachPreview(this.previewEl);
     } catch (err) {
       for (const m of opened) m.getTracks().forEach((t) => t.stop());
@@ -118,6 +142,45 @@ class LiveSession {
               : `Could not open the ${source === 'camera' ? 'camera' : 'screen'}: ${(err as Error).message}`,
       });
     }
+  }
+
+  /** The camera track in use (the second video track when a screen is mixed in). */
+  private cameraTrack(): MediaStreamTrack | undefined {
+    const video = this.media?.getVideoTracks() ?? [];
+    return this.state.source === 'both' ? video[1] : this.state.source === 'camera' ? video[0] : undefined;
+  }
+
+  /**
+   * Switches to the other camera: front to back (or back to front) on a phone, the next camera on a computer. While
+   * live this needs the mixer; without it the camera can only be changed before going live.
+   */
+  async switchCamera(): Promise<void> {
+    const old = this.cameraTrack();
+    if (!old || !this.media) return;
+    if (!this.compositor && isSending(this.state)) {
+      this.set({ mediaError: 'This browser cannot change camera during a stream. Change it before going live, or use Chrome or Edge.' });
+      return;
+    }
+    const cameras = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'videoinput');
+    const currentId = old.getSettings().deviceId;
+    const facing = facingOf(old);
+    const nextDevice = cameras.length > 1 ? cameras[(cameras.findIndex((c) => c.deviceId === currentId) + 1) % cameras.length] : undefined;
+    // Many phones cannot keep two cameras open, so the old one closes first; it reopens if the new one fails.
+    old.stop();
+    let fresh: MediaStreamTrack | undefined;
+    try {
+      const attempt = facing ? openCamera({ facing: facing === 'user' ? 'environment' : 'user' }, false) : openCamera({ deviceId: nextDevice?.deviceId }, false);
+      fresh = (await attempt.catch(() => (nextDevice ? openCamera({ deviceId: nextDevice.deviceId }, false) : Promise.reject(new Error('no other camera'))))).getVideoTracks()[0];
+    } catch {
+      fresh = (await openCamera({ deviceId: currentId }, false).catch(() => null))?.getVideoTracks()[0];
+      this.set({ mediaError: 'There is no other camera to switch to.' });
+    }
+    if (!fresh) return;
+    this.media.removeTrack(old);
+    this.media.addTrack(fresh);
+    if (this.compositor) this.compositor.replaceCamera(fresh);
+    else this.attachPreview(this.previewEl);
+    this.set({ facing: facingOf(fresh), ...(fresh.getSettings().deviceId !== currentId ? { mediaError: null } : {}) });
   }
 
   async goLive(): Promise<void> {

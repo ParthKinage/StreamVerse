@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useState } from 'react';
+import { SwitchCamera } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { DEFAULT_LIVE_PRICE_STRM, MAX_ACCESS_PRICE_STRM, parseSTRM, weiToString, type LiveStreamDto } from '@tesor_gp/shared';
 import { errorMessage } from '../../api/client';
@@ -178,7 +179,8 @@ function StreamControl({ stream }: { stream: LiveStreamDto }): JSX.Element {
   };
 
   const onAir = s.status === 'LIVE';
-  const mixed = (mine ? session.source : source) === 'both';
+  const mixed = mine && session.hasMedia ? session.mixed : source === 'both';
+  const canFlip = hasMedia && session.source !== 'screen' && (cameras.length > 1 || session.facing !== null);
   return (
     <section className="live-control" aria-label="Live stream">
       <div className="live-head">
@@ -230,11 +232,25 @@ function StreamControl({ stream }: { stream: LiveStreamDto }): JSX.Element {
       ) : (
         <div className="live-layout">
           <div className="live-main">
-            {mixed ? (
-              <canvas ref={previewRef} className="live-preview" aria-label="Preview of what viewers see" />
-            ) : (
-              <video ref={previewRef} className="live-preview" muted autoPlay playsInline aria-label="Preview of what viewers see" />
-            )}
+            <div className="live-preview-wrap">
+              {mixed ? (
+                <canvas ref={previewRef} className="live-preview" aria-label="Preview of what viewers see" />
+              ) : (
+                <video ref={previewRef} className="live-preview" muted autoPlay playsInline aria-label="Preview of what viewers see" />
+              )}
+              {canFlip ? (
+                <button
+                  type="button"
+                  className="icon-btn squircle flip-camera"
+                  onClick={() => void liveSession.switchCamera().then(listDevices)}
+                  aria-label={session.facing === 'user' ? 'Switch to the back camera' : session.facing === 'environment' ? 'Switch to the front camera' : 'Switch camera'}
+                  title="Switch camera"
+                  data-testid="flip-camera"
+                >
+                  <SwitchCamera size={20} aria-hidden="true" />
+                </button>
+              ) : null}
+            </div>
             <fieldset className="live-source" disabled={sending}>
               <legend>What to stream</legend>
               <label className="check">

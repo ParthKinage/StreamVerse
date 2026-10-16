@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import type { VideoDto } from '@tesor_gp/shared';
 import { useAuth } from '../auth/AuthContext';
@@ -86,7 +86,10 @@ export default function Home(): JSX.Element {
   const live = useQuery({ queryKey: ['live', 'now'], queryFn: liveApi.now, refetchInterval: 30_000 });
   const feed = useQuery({ queryKey: [...keys.feed, 'home'], queryFn: () => socialApi.feedPage(), enabled: Boolean(user) });
 
-  const featured = live.data?.items[0] ?? trending.data?.items[0] ?? recs.data?.items[0];
+  // A different pick on each visit: a stream that is on air (any of them), else one of the 10 most watched videos.
+  const [seed] = useState(() => Math.random());
+  const pick = <T,>(list: T[] | undefined, top = 10): T | undefined => (list?.length ? list[Math.floor(seed * Math.min(top, list.length))] : undefined);
+  const featured = pick(live.data?.items) ?? pick(trending.data?.items) ?? pick(recs.data?.items);
   const featuredLoading = !featured && (trending.isPending || live.isPending);
 
   return (

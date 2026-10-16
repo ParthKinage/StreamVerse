@@ -1,33 +1,33 @@
 /*
- * StreamVerse, "Carbon and oxblood" (dark) and "Parchment and ink" (light): neutral and editorial, one accent per theme
- * (a soft oxblood in dark, deep oxblood in light), square corners everywhere, bold sans headings. Motion is slow and small (fade-ins, a slight
- * thumbnail zoom, a drifting light behind the page, a breathing LIVE dot); buttons do not animate. Everything that
- * moves stops for people who ask for reduced motion. The video player is a dark stage in both themes.
+ * StreamVerse, "Infrared on concrete": graphite (dark) and concrete grey (light) with one loud infrared red. Square
+ * corners for content, squircle (superellipse) icons, and a dock-style island of icons on the left that grows under the
+ * pointer like the macOS Dock. Everything that moves stops for people who ask for reduced motion. The video player is a
+ * dark stage in both themes.
  */
 :root {
-  --bg: #111214;
-  --surface: #18191c;
-  --surface-2: #1e1f23;
-  --surface-3: #26272b;
-  --line: #2b2b2e;
-  --line-strong: #3d3c40;
-  --text: #ece7df;
-  --text-2: #a39d94;
-  --text-3: #8f897f;
-  --accent: #c27a70;
-  --accent-hover: #d08b81;
-  --on-accent: #111214;
-  --live: #e06c5b;
-  --danger: #d7735f;
-  --ok: #8fb39a;
-  --warn: #d6b36a;
-  --topbar-bg: rgba(17, 18, 20, 0.88);
-  --spot-a: rgba(194, 122, 112, 0.07);
-  --spot-b: rgba(236, 231, 223, 0.04);
-  --veil: rgba(8, 8, 9, 0.78);
-  --hover-wash: rgba(236, 231, 223, 0.08);
-  --accent-wash: rgba(194, 122, 112, 0.08);
-  --skeleton-hi: #2a2b30;
+  --bg: #1a1a1a;
+  --surface: #222222;
+  --surface-2: #2a2a2a;
+  --surface-3: #333333;
+  --line: #2f2f2f;
+  --line-strong: #444444;
+  --text: #f2f1ee;
+  --text-2: #b7b4ad;
+  --text-3: #9c9992;
+  --accent: #ff3b30;
+  --accent-hover: #ff5a50;
+  --on-accent: #111111;
+  --live: #ff3b30;
+  --danger: #ff6b5e;
+  --ok: #5fd38a;
+  --warn: #f5c451;
+  --topbar-bg: rgba(26, 26, 26, 0.88);
+  --spot-a: rgba(255, 59, 48, 0.07);
+  --spot-b: rgba(242, 241, 238, 0.04);
+  --veil: rgba(8, 8, 8, 0.78);
+  --hover-wash: rgba(242, 241, 238, 0.08);
+  --accent-wash: rgba(255, 59, 48, 0.1);
+  --skeleton-hi: #303030;
   color-scheme: dark;
   --font-head: 'Manrope', 'Inter', system-ui, sans-serif;
   --font-body: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -37,56 +37,56 @@
 
 /* Light theme: when the viewer picks it, or when their device prefers light and they have not picked dark. */
 :root[data-theme='light'] {
-  --bg: #f3eee4;
-  --surface: #fbf8f2;
-  --surface-2: #ece6da;
-  --surface-3: #e2dbcd;
-  --line: #ddd5c7;
-  --line-strong: #c7bdab;
-  --text: #1b1c20;
-  --text-2: #57534b;
-  --text-3: #6a645b;
-  --accent: #6e2b2b;
-  --accent-hover: #5a2121;
-  --on-accent: #f3eee4;
-  --live: #a33a2b;
-  --danger: #a33a2b;
-  --ok: #3f7a52;
-  --warn: #8a6a1f;
-  --topbar-bg: rgba(243, 238, 228, 0.9);
-  --spot-a: rgba(110, 43, 43, 0.06);
-  --spot-b: rgba(194, 122, 112, 0.09);
-  --veil: rgba(8, 8, 9, 0.72);
-  --hover-wash: rgba(27, 28, 32, 0.06);
-  --accent-wash: rgba(110, 43, 43, 0.06);
-  --skeleton-hi: #f8f4ec;
+  --bg: #d9d6d0;
+  --surface: #eceae5;
+  --surface-2: #e3e0da;
+  --surface-3: #cfcbc4;
+  --line: #c4c0b8;
+  --line-strong: #a9a49b;
+  --text: #111111;
+  --text-2: #4a4843;
+  --text-3: #57554f;
+  --accent: #c4001a;
+  --accent-hover: #a30016;
+  --on-accent: #ffffff;
+  --live: #c4001a;
+  --danger: #b0001a;
+  --ok: #1f7a3f;
+  --warn: #7a5200;
+  --topbar-bg: rgba(217, 214, 208, 0.9);
+  --spot-a: rgba(196, 0, 26, 0.06);
+  --spot-b: rgba(17, 17, 17, 0.04);
+  --veil: rgba(8, 8, 8, 0.72);
+  --hover-wash: rgba(17, 17, 17, 0.06);
+  --accent-wash: rgba(196, 0, 26, 0.07);
+  --skeleton-hi: #e6e3de;
   color-scheme: light;
 }
 @media (prefers-color-scheme: light) {
   :root:not([data-theme='dark']) {
-    --bg: #f3eee4;
-    --surface: #fbf8f2;
-    --surface-2: #ece6da;
-    --surface-3: #e2dbcd;
-    --line: #ddd5c7;
-    --line-strong: #c7bdab;
-    --text: #1b1c20;
-    --text-2: #57534b;
-    --text-3: #6a645b;
-    --accent: #6e2b2b;
-    --accent-hover: #5a2121;
-    --on-accent: #f3eee4;
-    --live: #a33a2b;
-    --danger: #a33a2b;
-    --ok: #3f7a52;
-    --warn: #8a6a1f;
-    --topbar-bg: rgba(243, 238, 228, 0.9);
-    --spot-a: rgba(110, 43, 43, 0.06);
-    --spot-b: rgba(194, 122, 112, 0.09);
-    --veil: rgba(8, 8, 9, 0.72);
-    --hover-wash: rgba(27, 28, 32, 0.06);
-    --accent-wash: rgba(110, 43, 43, 0.06);
-    --skeleton-hi: #f8f4ec;
+    --bg: #d9d6d0;
+    --surface: #eceae5;
+    --surface-2: #e3e0da;
+    --surface-3: #cfcbc4;
+    --line: #c4c0b8;
+    --line-strong: #a9a49b;
+    --text: #111111;
+    --text-2: #4a4843;
+    --text-3: #57554f;
+    --accent: #c4001a;
+    --accent-hover: #a30016;
+    --on-accent: #ffffff;
+    --live: #c4001a;
+    --danger: #b0001a;
+    --ok: #1f7a3f;
+    --warn: #7a5200;
+    --topbar-bg: rgba(217, 214, 208, 0.9);
+    --spot-a: rgba(196, 0, 26, 0.06);
+    --spot-b: rgba(17, 17, 17, 0.04);
+    --veil: rgba(8, 8, 8, 0.72);
+    --hover-wash: rgba(17, 17, 17, 0.06);
+    --accent-wash: rgba(196, 0, 26, 0.07);
+    --skeleton-hi: #e6e3de;
     color-scheme: light;
   }
 }
@@ -119,15 +119,8 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
 .topbar { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px var(--gutter); background: var(--topbar-bg); backdrop-filter: blur(12px); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
 .brand { font-family: var(--font-head); font-size: 1.15rem; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--text); }
 .brand:hover { color: var(--text); }
-.nav { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
-.nav a { color: var(--text-2); font-weight: 500; font-size: 0.92rem; }
-.nav a.active, .nav a:hover { color: var(--text); }
-.nav a.active { box-shadow: inset 0 -1px 0 var(--accent); }
-.menu-toggle { display: none; }
 .search input { background: var(--surface); border: 1px solid var(--line); color: var(--text); padding: 8px 14px; min-width: 240px; }
 .search input:focus { border-color: var(--line-strong); outline: none; }
-.wallet-chip { border: 1px solid var(--accent); color: var(--accent); padding: 4px 12px; font-variant-numeric: tabular-nums; }
-.wallet-chip:hover, .nav .wallet-chip.active { color: var(--on-accent); background: var(--accent); box-shadow: none; }
 .main { flex: 1; width: 100%; max-width: 1280px; margin: 0 auto; padding: 28px var(--gutter) 48px; }
 .main > * { animation: rise 0.6s var(--ease) both; }
 .page.narrow { max-width: 520px; margin: 0 auto; }
@@ -425,18 +418,7 @@ dl.stats { max-width: 720px; margin: 14px 0; }
 /* Phones and small tablets (kept near the end so these rules win over the general ones above). */
 @media (max-width: 720px) {
   :root { --gutter: 14px; }
-  .topbar { gap: 10px; padding: 10px var(--gutter); }
   .brand { font-size: 1rem; letter-spacing: 0.12em; }
-  .topbar-tools { margin-left: auto; order: 1; }
-  .menu-toggle { display: inline-flex; }
-  .search { order: 2; flex-basis: 100%; }
-  .search input { max-width: none; min-width: 0; padding: 10px 14px; }
-  .nav { order: 3; display: none; width: 100%; flex-direction: column; align-items: stretch; gap: 0; border-top: 1px solid var(--line); }
-  .nav.open { display: flex; }
-  .nav a, .nav .btn { padding: 12px 2px; border-bottom: 1px solid var(--line); }
-  .nav .btn { justify-content: flex-start; border-width: 0 0 1px; background: transparent; color: var(--accent); }
-  .nav .wallet-chip { align-self: flex-start; margin: 10px 0; padding: 6px 12px; border: 1px solid var(--accent); }
-  .nav a.active { box-shadow: none; color: var(--accent); }
   .main { padding: 18px var(--gutter) 40px; }
   h1 { font-size: 1.45rem; }
   .btn { min-height: 42px; }
@@ -474,6 +456,73 @@ dl.stats { max-width: 720px; margin: 14px 0; }
 .channel-list { list-style: none; padding: 0; margin: 0 0 24px; display: grid; gap: 8px; }
 .channel-item { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 0; border-bottom: 1px solid var(--line); }
 .channel-item .channel-name { font-weight: 600; flex: 1 1 auto; }
+
+/* ---------- Squircles: a superellipse mask, so icons keep the smooth "iOS" shape at any size. ---------- */
+.squircle { -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1 1' preserveAspectRatio='none'%3E%3Cpath d='M1 .5L.999 .688L.997 .748L.993 .791L.988 .826L.981 .854L.972 .879L.962 .9L.949 .919L.935 .935L.919 .949L.9 .962L.879 .972L.854 .981L.826 .988L.791 .993L.748 .997L.688 .999L.5 1L.312 .999L.252 .997L.209 .993L.174 .988L.146 .981L.121 .972L.1 .962L.081 .949L.065 .935L.051 .919L.038 .9L.028 .879L.019 .854L.012 .826L.007 .791L.003 .748L.001 .688L0 .5L.001 .312L.003 .252L.007 .209L.012 .174L.019 .146L.028 .121L.038 .1L.051 .081L.065 .065L.081 .051L.1 .038L.121 .028L.146 .019L.174 .012L.209 .007L.252 .003L.312 .001L.5 0L.688 .001L.748 .003L.791 .007L.826 .012L.854 .019L.879 .028L.9 .038L.919 .051L.935 .065L.949 .081L.962 .1L.972 .121L.981 .146L.988 .174L.993 .209L.997 .252L.999 .312Z'/%3E%3C/svg%3E") center / 100% 100% no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1 1' preserveAspectRatio='none'%3E%3Cpath d='M1 .5L.999 .688L.997 .748L.993 .791L.988 .826L.981 .854L.972 .879L.962 .9L.949 .919L.935 .935L.919 .949L.9 .962L.879 .972L.854 .981L.826 .988L.791 .993L.748 .997L.688 .999L.5 1L.312 .999L.252 .997L.209 .993L.174 .988L.146 .981L.121 .972L.1 .962L.081 .949L.065 .935L.051 .919L.038 .9L.028 .879L.019 .854L.012 .826L.007 .791L.003 .748L.001 .688L0 .5L.001 .312L.003 .252L.007 .209L.012 .174L.019 .146L.028 .121L.038 .1L.051 .081L.065 .065L.081 .051L.1 .038L.121 .028L.146 .019L.174 .012L.209 .007L.252 .003L.312 .001L.5 0L.688 .001L.748 .003L.791 .007L.826 .012L.854 .019L.879 .028L.9 .038L.919 .051L.935 .065L.949 .081L.962 .1L.972 .121L.981 .146L.988 .174L.993 .209L.997 .252L.999 .312Z'/%3E%3C/svg%3E") center / 100% 100% no-repeat; }
+.squircle:focus-visible { outline: none; background: var(--accent) !important; color: var(--on-accent) !important; }
+
+/* ---------- Top bar: logo and search in the middle, theme and log out on the right. ---------- */
+.topbar { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 16px; padding: 12px var(--gutter); flex-wrap: nowrap; }
+.topbar-center { display: flex; align-items: center; gap: 20px; min-width: 0; }
+.brand { font-weight: 800; letter-spacing: 0.14em; }
+.brand-accent { color: var(--accent); }
+.search { position: relative; flex: none; display: flex; }
+.search #site-search { width: min(460px, 44vw); min-width: 0; max-width: none; padding: 10px 16px 10px 40px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); }
+.search #site-search:focus { border-color: var(--accent); }
+.topbar-tools .btn { white-space: nowrap; }
+.search-icon { position: absolute; left: 15px; top: 50%; transform: translateY(-50%); color: var(--text-3); pointer-events: none; }
+.topbar-tools { justify-self: end; display: flex; align-items: center; gap: 8px; }
+.tool-btn { width: 40px; height: 40px; min-width: 40px; min-height: 40px; padding: 0; display: inline-flex; align-items: center; justify-content: center; background: var(--surface-2); color: var(--text); }
+.tool-btn:hover:not(:disabled) { background: var(--accent); color: var(--on-accent); }
+
+/* ---------- The dock: an island of icons on the left; icons near the pointer grow (Dock.tsx sets --s). ---------- */
+.dock { position: fixed; left: 16px; top: 50%; transform: translateY(-50%); z-index: 30; }
+.dock-island { list-style: none; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 10px; background: var(--surface); border: 1px solid var(--line); border-radius: 26px; box-shadow: 0 14px 36px rgba(0, 0, 0, 0.28); }
+.dock-item { --s: 1; --b: 44px; }
+.dock-link { position: relative; display: flex; align-items: center; color: var(--text); }
+.dock-link:hover { color: var(--text); }
+.dock-link:focus-visible { outline: none; }
+.dock-icon { width: calc(var(--b) * var(--s)); height: calc(var(--b) * var(--s)); display: flex; align-items: center; justify-content: center; background: var(--surface-2); color: var(--text); transition: width 0.14s var(--ease), height 0.14s var(--ease), background-color 0.14s; }
+.dock-icon svg { width: calc(var(--b) * 0.5 * var(--s)); height: calc(var(--b) * 0.5 * var(--s)); transition: width 0.14s var(--ease), height 0.14s var(--ease); }
+.dock-link:hover .dock-icon { background: var(--surface-3); }
+.dock-link.active .dock-icon, .dock-link:focus-visible .dock-icon { background: var(--accent); color: var(--on-accent); }
+.dock-label { position: absolute; left: calc(100% + 14px); top: 50%; transform: translate(-6px, -50%); display: flex; flex-direction: column; white-space: nowrap; line-height: 1.25; background: var(--text); color: var(--bg); font-size: 0.8rem; font-weight: 700; padding: 6px 11px; border-radius: 8px; opacity: 0; pointer-events: none; transition: opacity 0.12s, transform 0.12s var(--ease); }
+.dock-sub { font-weight: 500; font-size: 0.72rem; opacity: 0.75; font-variant-numeric: tabular-nums; }
+.dock-link:hover .dock-label, .dock-link:focus-visible .dock-label { opacity: 1; transform: translate(0, -50%); }
+.dock-live .dock-icon { background: var(--bg); box-shadow: inset 0 0 0 2px var(--live); }
+.live-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--live); animation: breathe 2s ease-in-out infinite; }
+.main, .footer { padding-left: calc(96px + var(--gutter)); }
+@media (max-height: 640px) and (min-width: 721px) { .dock-item { --b: 36px; } .dock-island { gap: 4px; padding: 8px; } }
+
+/* ---------- Camera switch on the live preview. ---------- */
+.live-preview-wrap { position: relative; max-width: 720px; }
+.flip-camera { position: absolute; right: 12px; bottom: 24px; width: 46px; height: 46px; display: inline-flex; align-items: center; justify-content: center; background: rgba(17, 17, 17, 0.72); color: #fff; }
+.flip-camera:hover:not(:disabled) { background: var(--accent); color: var(--on-accent); }
+
+/* ---------- Phones: the dock becomes a bar along the bottom; the search goes under the logo. ---------- */
+@media (max-width: 720px) {
+  .topbar { grid-template-columns: 1fr auto; gap: 10px; padding: 10px var(--gutter); }
+  .topbar-side { display: none; }
+  .topbar-center { display: contents; }
+  .brand { grid-column: 1; grid-row: 1; font-size: 1rem; }
+  .topbar-tools { grid-column: 2; grid-row: 1; }
+  .search { grid-column: 1 / -1; grid-row: 2; }
+  .search #site-search { width: 100%; }
+  .dock { left: 0; right: 0; top: auto; bottom: 0; transform: none; padding: 6px 6px calc(6px + env(safe-area-inset-bottom)); background: var(--topbar-bg); backdrop-filter: blur(12px); border-top: 1px solid var(--line); }
+  .dock-island { flex-direction: row; align-items: center; justify-content: space-between; gap: 2px; padding: 0; background: none; border: none; border-radius: 0; box-shadow: none; overflow-x: auto; scrollbar-width: none; }
+  .dock-island::-webkit-scrollbar { display: none; }
+  .dock-item { --b: 34px; --s: 1 !important; flex: 1 0 auto; }
+  .dock-link { flex-direction: column; gap: 3px; padding: 2px 4px; }
+  .dock-label { position: static; opacity: 1; transform: none; background: none; color: var(--text-2); font-size: 0.62rem; padding: 0; transition: none; }
+  .dock-link.active .dock-label { color: var(--text); }
+  .dock-link:hover .dock-label, .dock-link:focus-visible .dock-label { transform: none; }
+  .dock-sub { display: none; }
+  .main, .footer { padding-left: var(--gutter); }
+  .main { padding-bottom: 96px; }
+  .footer { padding-bottom: 92px; }
+  .wake-panel { bottom: 84px; }
+  .toasts { bottom: 84px; }
+}
 
 /* Tips in live chat */
 .chat-list li.chat-tip { border-left: 2px solid var(--accent); padding: 6px 8px; background: color-mix(in srgb, var(--accent) 8%, transparent); }
