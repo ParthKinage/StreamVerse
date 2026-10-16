@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { reportError } from '../monitoring';
 
 interface Props {
   children: ReactNode;
@@ -16,6 +17,7 @@ export class ErrorBoundary extends Component<Props, S> {
   }
   override componentDidCatch(error: Error, info: ErrorInfo): void {
     console.error('Route error', error, info.componentStack);
+    reportError(error);
   }
   override componentDidUpdate(prev: Props): void {
     if (prev.resetKey !== this.props.resetKey && this.state.error) this.setState({ error: null });

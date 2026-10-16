@@ -34,6 +34,26 @@ enum LiveStatus {
   FAILED
 }
 
+enum ReportTarget {
+  VIDEO
+  CHAT_MESSAGE
+  CHANNEL
+}
+
+enum ReportReason {
+  SPAM
+  ABUSE
+  SEXUAL
+  COPYRIGHT
+  OTHER
+}
+
+enum ReportStatus {
+  OPEN
+  DISMISSED
+  ACTIONED
+}
+
 enum SessionStatus {
   ACTIVE
   PAUSED
@@ -60,6 +80,9 @@ model User {
   username      String   @unique
   walletAddress String?  @unique
   role          Role     @default(USER)
+  /** Set by an admin: the account cannot sign in, and its live stream is ended. */
+  suspendedAt   DateTime?
+  suspendReason String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -74,6 +97,8 @@ model User {
   coinOrders     CoinOrder[]
   purchases      VideoPurchase[]
   chatMessages   LiveChatMessage[]
+  tipsSent       Tip[]
+  reports        Report[]
   paidSegments   PaidSegment[]
   watchlist      WatchlistItem[]
   likes          VideoLike[]
@@ -142,6 +167,9 @@ model Video {
   transcodeProgress Int              @default(0)
   failureReason     String?
   isPublished       Boolean          @default(false)
+  /** Hidden by a moderator: out of every list and unplayable until an admin restores it; the creator cannot republish it. */
+  hiddenAt          DateTime?
+  hiddenReason      String?
   archivedAt        DateTime?
   viewsCount        Int              @default(0)
   createdAt         DateTime         @default(now())
@@ -222,6 +250,7 @@ model PaymentSettlement {
   createdAt           DateTime         @default(now())
 
   user    User           @relation(fields: [userId], references: [id])
+  tip     Tip?
   session  WatchSession?   @relation(fields: [sessionId], references: [id])
   creator  CreatorProfile  @relation(fields: [creatorId], references: [id])
   video    Video           @relation(fields: [videoId], references: [id])
@@ -441,6 +470,7 @@ model LiveStream {
   video    Video          @relation(fields: [videoId], references: [id])
   segments LiveSegment[]
   chat     LiveChatMessage[]
+  tips     Tip[]
 
   @@index([status, startedAt])
   @@index([creatorId, createdAt])
@@ -467,10 +497,57 @@ model LiveChatMessage {
   text         String
   createdAt    DateTime  @default(now())
   removedAt    DateTime?
+  /** Set when the message came with a tip: the amount, shown highlighted in the chat. */
+  tipSTRM      Decimal?  @db.Decimal(38, 18)
 
   liveStream LiveStream @relation(fields: [liveStreamId], references: [id], onDelete: Cascade)
   user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tip        Tip?
 
   @@index([liveStreamId, id])
   @@index([liveStreamId, removedAt])
+}
+
+/**
+ * A tip sent during a live stream. It is paid like any other payment: one settlement (same platform fee as videos),
+ * reserved from the viewer's balance at once, and it appears in the chat as a highlighted message.
+ */
+model Tip {
+  id            String   @id @default(uuid())
+  fromUserId    String
+  liveStreamId  String
+  amountSTRM    Decimal  @db.Decimal(38, 18)
+  settlementId  String   @unique
+  chatMessageId Int?     @unique
+  createdAt     DateTime @default(now())
+
+  fromUser    User              @relation(fields: [fromUserId], references: [id])
+  liveStream  LiveStream        @relation(fields: [liveStreamId], references: [id])
+  settlement  PaymentSettlement @relation(fields: [settlementId], references: [id])
+  chatMessage LiveChatMessage?  @relation(fields: [chatMessageId], references: [id])
+
+  @@index([liveStreamId, createdAt])
+  @@index([fromUserId])
+  @@index([createdAt])
+}
+
+/** A viewer's report of a video, a chat message or a channel, for the admins' Reports queue. One per person and item. */
+model Report {
+  id           String       @id @default(uuid())
+  reporterId   String
+  targetType   ReportTarget
+  /** Video id, chat message id (as text) or creator profile id. */
+  targetId     String
+  reason       ReportReason
+  details      String?
+  status       ReportStatus @default(OPEN)
+  createdAt    DateTime     @default(now())
+  resolvedAt   DateTime?
+  resolvedById String?
+
+  reporter User @relation(fields: [reporterId], references: [id], onDelete: Cascade)
+
+  @@unique([reporterId, targetType, targetId])
+  @@index([status, targetType, targetId])
+  @@index([createdAt])
 }

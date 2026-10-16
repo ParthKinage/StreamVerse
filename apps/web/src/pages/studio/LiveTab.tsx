@@ -207,6 +207,13 @@ function StreamControl({ stream }: { stream: LiveStreamDto }): JSX.Element {
           <dd data-testid="live-buyers">{s.buyers}</dd>
         </div>
         <div>
+          <dt>Tips</dt>
+          <dd data-testid="live-tips">
+            {money(s.tipsWei)}
+            {s.tipsCount ? <span className="muted small"> · {s.tipsCount}</span> : null}
+          </dd>
+        </div>
+        <div>
           <dt>Streamed</dt>
           <dd>{formatDuration(s.durationSeconds)}</dd>
         </div>
