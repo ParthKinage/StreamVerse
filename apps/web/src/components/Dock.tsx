@@ -13,6 +13,8 @@ interface Item {
   Icon: LucideIcon;
   end?: boolean;
   extra?: JSX.Element;
+  /** Read out with the label (the account name on Settings). */
+  detail?: string;
 }
 
 /** How far (px) from the pointer an icon still grows, and by how much at most (like the macOS Dock). */
@@ -53,7 +55,7 @@ export function Dock(): JSX.Element {
               </span>
             ) : undefined,
           },
-          { to: '/settings', label: 'Settings', Icon: Settings, extra: <span className="dock-sub">{user.username}</span> },
+          { to: '/settings', label: 'Settings', Icon: Settings, detail: user.username, extra: <span className="dock-sub">{user.username}</span> },
           ...(user.role === 'ADMIN' ? [{ to: '/admin', label: 'Admin', Icon: ShieldCheck }] : []),
         ]
       : []),
@@ -76,9 +78,9 @@ export function Dock(): JSX.Element {
   return (
     <nav className="dock" aria-label="Main">
       <ul ref={listRef} className="dock-island" onMouseMove={magnify} onMouseLeave={reset}>
-        {items.map(({ to, label, Icon, end, extra }) => (
+        {items.map(({ to, label, Icon, end, extra, detail }) => (
           <li key={to} className="dock-item">
-            <NavLink to={to} end={end} aria-label={label} className={({ isActive }) => `dock-link${isActive ? ' active' : ''}`}>
+            <NavLink to={to} end={end} aria-label={detail ? `${label}, ${detail}` : label} className={({ isActive }) => `dock-link${isActive ? ' active' : ''}`}>
               <span className="dock-icon squircle">
                 <Icon size={22} strokeWidth={1.9} aria-hidden />
               </span>
