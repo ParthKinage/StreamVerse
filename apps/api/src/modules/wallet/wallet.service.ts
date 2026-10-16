@@ -204,7 +204,7 @@ export async function listTransactions(
       where: { userId, ...(dateFilter ? { createdAt: dateFilter } : {}) },
       orderBy: { createdAt: 'desc' },
       take: limit + 1,
-      include: { video: { select: { title: true } } },
+      include: { video: { select: { title: true } }, tip: { select: { id: true } } },
     }),
     ctx.prisma.tokenReward.findMany({
       where: { userId, ...(dateFilter ? { createdAt: dateFilter } : {}) },
@@ -242,7 +242,7 @@ export async function listTransactions(
       amountWei: toWei(s.amountSTRM).toString(),
       txHash: s.txHash,
       explorerUrl: explorer(s.txHash),
-      label: `${s.sessionId ? 'Watched' : 'Unlocked'}: ${s.video.title}`,
+      label: `${s.tip ? 'Tip' : s.sessionId ? 'Watched' : 'Unlocked'}: ${s.video.title}`,
       createdAt: s.createdAt.toISOString(),
       sort: s.createdAt,
     })),
@@ -286,7 +286,7 @@ async function listBankTransactions(
       where: { userId, ...dateFilter },
       orderBy: { createdAt: 'desc' },
       take: limit + 1,
-      include: { video: { select: { title: true } } },
+      include: { video: { select: { title: true } }, tip: { select: { id: true } } },
     }),
   ]);
   const all: Array<WalletTransaction & { sort: Date }> = [
@@ -308,7 +308,7 @@ async function listBankTransactions(
       amountWei: toWei(s.amountSTRM).toString(),
       txHash: null,
       explorerUrl: null,
-      label: `${s.sessionId ? 'Watched' : 'Unlocked'}: ${s.video.title}`,
+      label: `${s.tip ? 'Tip' : s.sessionId ? 'Watched' : 'Unlocked'}: ${s.video.title}`,
       createdAt: s.createdAt.toISOString(),
       sort: s.createdAt,
     })),

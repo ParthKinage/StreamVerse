@@ -22,6 +22,7 @@ import type {
   UpdateVideoRequest,
   ChatMessageDto,
   ChatResponse,
+  SendTipResponse,
   PurchaseResponse,
   CreateLiveRequest,
   LiveStreamDto,
@@ -167,6 +168,9 @@ export const liveApi = {
   /** Chat is the same for everyone, so it is read without the login header (the edge may serve it for 2 s). */
   chat: (streamId: string, after?: number) => api<ChatResponse>(`/live/${encodeURIComponent(streamId)}/chat`, { query: { after }, anonymous: true }),
   postChat: (streamId: string, text: string) => api<ChatMessageDto>(`/live/${encodeURIComponent(streamId)}/chat`, { method: 'POST', body: { text } }),
+  /** A tip during a live stream; the message (optional) shows with it in the chat. */
+  tip: (streamId: string, amountWei: string, message?: string) =>
+    api<SendTipResponse>(`/live/${encodeURIComponent(streamId)}/tips`, { method: 'POST', body: { amountWei, ...(message ? { message } : {}) } }),
   removeChat: (streamId: string, messageId: number) => api<void>(`/live/${encodeURIComponent(streamId)}/chat/${messageId}`, { method: 'DELETE' }),
 };
 

@@ -235,7 +235,15 @@ export default function Watch(): JSX.Element {
       </div>
       <aside className="watch-side" aria-label="Up next">
         {video.live && (video.live.status === 'LIVE' || video.live.status === 'ENDED') ? (
-          <LiveChat streamId={video.live.streamId} live={onAir} postBlockedReason={chatBlockedReason} canModerate={isOwner || user?.role === 'ADMIN'} />
+          <LiveChat
+            streamId={video.live.streamId}
+            live={onAir}
+            postBlockedReason={chatBlockedReason}
+            canModerate={isOwner || user?.role === 'ADMIN'}
+            canTip={Boolean(user) && !isOwner && walletReady}
+            onTipped={() => void qc.invalidateQueries({ queryKey: keys.summary })}
+            onNeedMoney={() => setTopUp(true)}
+          />
         ) : null}
         <h2>Up next</h2>
         {recs.isPending ? (
