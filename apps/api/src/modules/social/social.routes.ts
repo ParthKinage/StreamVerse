@@ -1,11 +1,11 @@
 import { Router } from 'express';
-import { cursorQuery, type VideoDto } from '@tesor_gp/shared';
+import { cursorQuery, type CreatorProfileDto, type VideoDto } from '@tesor_gp/shared';
 import type { AppContext } from '../../context';
 import { requireAuth, userId } from '../../middleware/auth';
-import { notFound } from '../../middleware/errors';
+import { badRequest, notFound } from '../../middleware/errors';
 import { validate } from '../../middleware/validate';
 import { decodeCursor, encodeCursor, videoInclude } from '../common';
-import { decorateVideos, publicVideoWhere } from '../catalog';
+import { creatorsToDto, decorateVideos, listVideos, liveNowWhere, ownedVideoIds, publicVideoWhere } from '../catalog';
 
 export function socialRoutes(ctx: AppContext): Router {
   const router = Router();
@@ -54,6 +54,51 @@ export function socialRoutes(ctx: AppContext): Router {
     const last = page[page.length - 1];
     const videos: VideoDto[] = await decorateVideos(ctx, page.map((i) => i.video), uid);
     res.json({ items: videos, nextCursor: items.length > q.limit && last ? encodeCursor({ t: last.createdAt.toISOString(), id: last.id }) : null });
+  });
+
+  router.post('/creators/:id/follow', auth, async (req, res) => {
+    const creatorId = String(req.params.id);
+    const uid = userId(req);
+    const creator = await ctx.prisma.creatorProfile.findUnique({ where: { id: creatorId }, select: { userId: true } });
+    if (!creator) throw notFound('Channel not found');
+    if (creator.userId === uid) throw badRequest('VALIDATION_ERROR', 'You cannot follow your own channel');
+    const existing = await ctx.prisma.follow.findUnique({ where: { followerId_creatorId: { followerId: uid, creatorId } } });
+    if (existing) await ctx.prisma.follow.delete({ where: { id: existing.id } });
+    else await ctx.prisma.follow.upsert({ where: { followerId_creatorId: { followerId: uid, creatorId } }, update: {}, create: { followerId: uid, creatorId } });
+    res.json({ following: !existing, followersCount: await ctx.prisma.follow.count({ where: { creatorId } }) });
+  });
+
+  /** The channels the viewer follows, most recently followed first. */
+  router.get('/me/following', auth, async (req, res) => {
+    const uid = userId(req);
+    const rows = await ctx.prisma.follow.findMany({
+      where: { followerId: uid },
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+      include: { creator: { include: { user: { select: { username: true } } } } },
+    });
+    const items: CreatorProfileDto[] = await creatorsToDto(ctx, rows.map((r) => r.creator), uid);
+    res.json({ items });
+  });
+
+  /** New videos from followed channels, newest first; the first page starts with any of them that are live now. */
+  router.get('/me/feed', auth, validate('query', cursorQuery), async (req, res) => {
+    const q = req.query as unknown as { cursor?: string; limit: number };
+    const uid = userId(req);
+    const followed = await ctx.prisma.follow.findMany({ where: { followerId: uid }, select: { creatorId: true } });
+    if (followed.length === 0) return void res.json({ items: [], nextCursor: null });
+    const creatorIds = followed.map((f) => f.creatorId);
+    const page = await listVideos(ctx, { sort: 'newest', limit: q.limit, ...(q.cursor ? { cursor: q.cursor } : {}) }, uid, { creatorId: { in: creatorIds } });
+    if (!q.cursor) {
+      const live = await ctx.prisma.video.findMany({ where: { ...liveNowWhere, creatorId: { in: creatorIds } }, include: videoInclude, orderBy: { createdAt: 'desc' }, take: 12 });
+      page.items = [...(await decorateVideos(ctx, live, uid)), ...page.items];
+    }
+    res.json(page);
+  });
+
+  /** Ids of the videos the viewer owns, so any list can mark them without per-viewer lists (which the edge cannot cache). */
+  router.get('/me/owned', auth, async (req, res) => {
+    res.json({ videoIds: await ownedVideoIds(ctx, userId(req)) });
   });
 
   return router;

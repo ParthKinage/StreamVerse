@@ -329,7 +329,7 @@ export async function listHistory(ctx: AppContext, userId: string, cursor: strin
 }
 
 /** Latest unfinished video per title, most recent first. */
-export async function continueWatching(ctx: AppContext, userId: string, limit = 12): Promise<{ items: Array<{ video: VideoDto; positionSec: number; watchedAt: string }> }> {
+export async function continueWatching(ctx: AppContext, userId: string, limit = 12): Promise<{ items: Array<{ video: VideoDto; lastPositionSec: number; watchedAt: string }> }> {
   const rows = await ctx.prisma.watchSession.findMany({
     where: { userId, lastPlaybackTime: { gt: 5 }, video: { ...publicVideoWhere } },
     orderBy: { startedAt: 'desc' },
@@ -348,6 +348,6 @@ export async function continueWatching(ctx: AppContext, userId: string, limit = 
   const videos = await decorateVideos(ctx, picked.map((r) => r.video), userId);
   const byId = new Map(videos.map((v) => [v.id, v]));
   return {
-    items: picked.map((r) => ({ video: byId.get(r.videoId) as VideoDto, positionSec: Math.floor(r.lastPlaybackTime), watchedAt: r.startedAt.toISOString() })),
+    items: picked.map((r) => ({ video: byId.get(r.videoId) as VideoDto, lastPositionSec: Math.floor(r.lastPlaybackTime), watchedAt: r.startedAt.toISOString() })),
   };
 }

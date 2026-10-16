@@ -49,8 +49,11 @@ export function Layout(): JSX.Element {
           </NavLink>
           {user ? (
             <>
+              <NavLink to="/following" className={link} onClick={() => setOpen(false)}>
+                Following
+              </NavLink>
               <NavLink to="/watchlist" className={link} onClick={() => setOpen(false)}>
-                Watchlist
+                Library
               </NavLink>
               <NavLink to="/history" className={link} onClick={() => setOpen(false)}>
                 History

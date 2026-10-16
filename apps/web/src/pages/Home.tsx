@@ -4,8 +4,8 @@ import { Link } from 'react-router-dom';
 import type { VideoDto } from '@tesor_gp/shared';
 import { useAuth } from '../auth/AuthContext';
 import { errorMessage } from '../api/client';
-import { catalogApi, liveApi } from '../api/endpoints';
-import { useCategories, useContinueWatching } from '../api/queries';
+import { catalogApi, liveApi, socialApi } from '../api/endpoints';
+import { keys, useCategories, useContinueWatching } from '../api/queries';
 import { EmptyState, ErrorState, Skeleton, VideoGridSkeleton } from '../components/States';
 import { VideoCard } from '../components/VideoCard';
 import { costLabel, formatDuration, formatViews, timeAgo } from '../lib/format';
@@ -84,6 +84,7 @@ export default function Home(): JSX.Element {
   const trending = useQuery({ queryKey: ['videos', 'trending'], queryFn: () => catalogApi.list({ sort: 'trending', limit: 12 }) });
   const cats = useCategories();
   const live = useQuery({ queryKey: ['live', 'now'], queryFn: liveApi.now, refetchInterval: 30_000 });
+  const feed = useQuery({ queryKey: [...keys.feed, 'home'], queryFn: () => socialApi.feedPage(), enabled: Boolean(user) });
 
   const featured = live.data?.items[0] ?? trending.data?.items[0] ?? recs.data?.items[0];
   const featuredLoading = !featured && (trending.isPending || live.isPending);
@@ -142,6 +143,12 @@ export default function Home(): JSX.Element {
           ) : (
             <Rail videos={continueQ.data.items.map((h) => h.video)} progress={Object.fromEntries(continueQ.data.items.map((h) => [h.video.id, h.lastPositionSec]))} />
           )}
+        </Section>
+      ) : null}
+
+      {feed.data?.items.length ? (
+        <Section title="From channels you follow" to="/following">
+          <Rail videos={feed.data.items.slice(0, 12)} testId="following-feed" />
         </Section>
       ) : null}
 

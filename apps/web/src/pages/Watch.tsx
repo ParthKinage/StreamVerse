@@ -7,6 +7,7 @@ import { ApiError, errorMessage } from '../api/client';
 import { catalogApi, socialApi } from '../api/endpoints';
 import { keys, useBankMode, useConfig, useManagedMode, useWalletSummary } from '../api/queries';
 import { BankTopUpDialog } from '../bank/BankTopUpDialog';
+import { FollowButton } from '../components/FollowButton';
 import { ErrorState, PageSpinner, VideoGridSkeleton } from '../components/States';
 import { useToast } from '../components/Toasts';
 import { VideoCard } from '../components/VideoCard';
@@ -106,6 +107,7 @@ export default function Watch(): JSX.Element {
       toast.success('You have access. Enjoy the stream!');
       await qc.invalidateQueries({ queryKey: ['video', id] });
       await qc.invalidateQueries({ queryKey: keys.summary });
+      await qc.invalidateQueries({ queryKey: keys.owned });
     } catch (err) {
       if (err instanceof ApiError && err.code === 'INSUFFICIENT_BALANCE') setTopUp(true);
       toast.error(errorMessage(err));
@@ -205,6 +207,7 @@ export default function Watch(): JSX.Element {
           {video.live?.status === 'ENDED' ? ' · recorded live' : ''}
         </p>
         <div className="actions">
+          <FollowButton creatorId={video.creator.id} />
           <button type="button" className={`btn ${video.liked ? 'primary' : ''}`} aria-pressed={Boolean(video.liked)} onClick={() => void toggle('like')}>
             {video.liked ? 'Liked' : 'Like'} {video.likesCount ? `(${video.likesCount})` : ''}
           </button>

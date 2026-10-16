@@ -81,12 +81,20 @@ export interface VideoListParams {
   category?: string;
   creatorId?: string;
   sort?: 'newest' | 'popular' | 'trending';
+  price?: 'free' | 'paid';
+  length?: 'short' | 'medium' | 'long';
+  /** Only the signed-in viewer's owned videos; such lists go with the login header (see listMine). */
+  owned?: '1';
   cursor?: string;
   limit?: number;
 }
 export const catalogApi = {
   // Sent without the login header: lists are the same for everyone, so Vercel's edge can cache them.
   list: (p: VideoListParams = {}) => api<Page<VideoDto>>('/videos', { query: { ...p }, anonymous: true }),
+  /** The same list for the signed-in viewer (needed for owned=1). */
+  listMine: (p: VideoListParams = {}) => api<Page<VideoDto>>('/videos', { query: { ...p } }),
+  /** Channels matching a search. */
+  creators: (q: string) => api<{ items: CreatorProfileDto[] }>('/creators', { query: { q }, anonymous: true }),
   get: (id: string) => api<VideoDto>(`/videos/${encodeURIComponent(id)}`),
   categories: () => api<{ categories: Array<{ name: string; count: number }> }>('/categories', { anonymous: true }),
   creator: (id: string) => api<CreatorProfileDto>(`/creators/${encodeURIComponent(id)}`),
@@ -99,6 +107,10 @@ export const socialApi = {
   like: (id: string) => api<{ liked: boolean; likesCount: number }>(`/videos/${encodeURIComponent(id)}/like`, { method: 'POST' }),
   watchlist: (id: string) => api<{ inWatchlist: boolean }>(`/videos/${encodeURIComponent(id)}/watchlist`, { method: 'POST' }),
   watchlistPage: (cursor?: string) => api<Page<VideoDto>>('/me/watchlist', { query: { cursor } }),
+  follow: (creatorId: string) => api<{ following: boolean; followersCount: number }>(`/creators/${encodeURIComponent(creatorId)}/follow`, { method: 'POST' }),
+  following: () => api<{ items: CreatorProfileDto[] }>('/me/following'),
+  feedPage: (cursor?: string) => api<Page<VideoDto>>('/me/feed', { query: { cursor } }),
+  owned: () => api<{ videoIds: string[] }>('/me/owned'),
 };
 
 export const watchApi = {
@@ -108,7 +120,7 @@ export const watchApi = {
   end: (sessionId: string, endToken?: string) =>
     api<EndSessionResponse>(`/watch/sessions/${encodeURIComponent(sessionId)}/end`, { method: 'POST', body: { endToken }, keepalive: true }),
   history: (cursor?: string) => api<Page<HistoryItem>>('/me/history', { query: { cursor } }),
-  continueWatching: () => api<{ items: HistoryItem[] }>('/me/continue-watching'),
+  continueWatching: () => api<{ items: Array<Pick<HistoryItem, 'video' | 'lastPositionSec' | 'watchedAt'>> }>('/me/continue-watching'),
 };
 
 export const creatorApi = {

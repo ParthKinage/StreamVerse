@@ -1,2 +1,2 @@
 export { catalogRoutes } from './catalog.routes';
-export { decorateVideos, liveNowWhere, publicVideoWhere, trendingVideoIds, watchableVideoWhere } from './catalog.service';
+export { creatorsToDto, decorateVideos, listVideos, liveNowWhere, ownedVideoIds, publicVideoWhere, trendingVideoIds, watchableVideoWhere } from './catalog.service';
