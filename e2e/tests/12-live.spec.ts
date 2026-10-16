@@ -52,17 +52,27 @@ test('a creator goes live, a viewer buys access, they chat, and the recording is
 
   // Chat both ways.
   await viewerPage.getByRole('textbox', { name: 'Message' }).fill('Hello from the audience');
-  await viewerPage.getByRole('button', { name: 'Send' }).click();
+  await viewerPage.getByRole('button', { name: 'Send', exact: true }).click();
   await page.getByTestId('nav-live').click();
   await expect(page.getByTestId('sender-status')).toContainText('You are live');
   await expect(page.getByTestId('chat-message').filter({ hasText: 'Hello from the audience' })).toBeVisible({ timeout: 15_000 });
   await page.getByRole('textbox', { name: 'Message' }).fill('Thanks for watching');
-  await page.getByRole('button', { name: 'Send' }).click();
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(viewerPage.getByTestId('chat-message').filter({ hasText: 'Thanks for watching' })).toBeVisible({ timeout: 15_000 });
+
+  // A tip with a message: paid like any payment and highlighted in the chat for both of them.
+  await viewerPage.getByRole('textbox', { name: 'Message' }).fill('great stream');
+  await viewerPage.getByRole('button', { name: 'Other' }).click();
+  await viewerPage.getByLabel('Tip amount').fill('2');
+  await viewerPage.getByTestId('send-tip').click();
+  await expect(viewerPage.getByTestId('chat-tip').first()).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId('chat-message').filter({ hasText: 'great stream' }).getByTestId('chat-tip')).toBeVisible({ timeout: 15_000 });
+  await expect.poll(async () => (await platform.settlements(viewer.id)).length, { timeout: 15_000 }).toBe(2);
 
   // The creator sees the viewer and the sale, then ends the stream.
   await expect(page.getByTestId('live-viewers')).toHaveText('1', { timeout: 30_000 });
   await expect(page.getByTestId('live-buyers')).toHaveText('1');
+  await expect(page.getByTestId('live-tips')).toContainText('2', { timeout: 15_000 });
   await page.getByTestId('end-live').click();
   await expect(page.getByText('Past streams')).toBeVisible({ timeout: 30_000 });
 

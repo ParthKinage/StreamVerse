@@ -344,3 +344,50 @@ describe('live chat', () => {
     expect(statuses).toEqual([201, 201, 201, 201, 201, 429]);
   });
 });
+
+describe('tips during a live stream', () => {
+  async function liveWithBuyer(money = '100') {
+    const c = await creator();
+    const s = await goLive(c, {}, 1);
+    const v = await viewer(money);
+    expect((await api(v).post(`/api/v1/videos/${s.videoId}/purchase`).send({})).status).toBe(200);
+    return { c, s, v };
+  }
+
+  it('pays the creator like any payment and shows the tip in the chat', async () => {
+    const { c, s, v } = await liveWithBuyer();
+    const res = await api(v).post(`/api/v1/live/${s.id}/tips`).send({ amountWei: strm('10'), message: '  keep going!  ' });
+    expect(res.status).toBe(201);
+    expect(res.body.message).toMatchObject({ text: 'keep going!', tipWei: strm('10'), fromCreator: false, user: { username: v.username } });
+    expect(res.body.availableWei).toBe(strm('40')); // 100 - 50 access - 10 tip
+
+    const chat = await h.req().get(`/api/v1/live/${s.id}/chat`);
+    expect(chat.body.items.map((m: { tipWei: string | null }) => m.tipWei)).toEqual([strm('10')]);
+    // A tip without a message is fine too.
+    expect((await api(v).post(`/api/v1/live/${s.id}/tips`).send({ amountWei: strm('5') })).body.message).toMatchObject({ text: '', tipWei: strm('5') });
+
+    const stats = await api(c).get(`/api/v1/creator/live/${s.id}`);
+    expect(stats.body).toMatchObject({ tipsWei: strm('15'), tipsCount: 2, earnedWei: strm('65') }); // no platform fee in this harness
+    const settlements = await h.ctx.prisma.paymentSettlement.findMany({ where: { userId: v.id }, include: { tip: true } });
+    expect(settlements.filter((x) => x.tip)).toHaveLength(2);
+    const history = await api(v).get('/api/v1/wallet/transactions');
+    expect(history.body.items.filter((t: { label: string }) => t.label.startsWith('Tip: '))).toHaveLength(2);
+  });
+
+  it('refuses tips that are out of range, unaffordable, to yourself, without access or after the end', async () => {
+    const { c, s, v } = await liveWithBuyer('60');
+    const tip = (u: TestUser, amount: string) => api(u).post(`/api/v1/live/${s.id}/tips`).send({ amountWei: strm(amount) });
+    expect((await tip(v, '0.5')).status).toBe(400);
+    expect((await tip(v, '1001')).status).toBe(400);
+    const poor = await tip(v, '20'); // 10 left after access
+    expect(poor.status).toBe(402);
+    expect(poor.body.error.code).toBe('INSUFFICIENT_BALANCE');
+    expect((await tip(c, '10')).status).toBe(400);
+    const stranger = await viewer();
+    expect((await tip(stranger, '10')).body.error.code).toBe('PURCHASE_REQUIRED');
+    expect((await h.req().post(`/api/v1/live/${s.id}/tips`).send({ amountWei: strm('10') })).status).toBe(401);
+    await api(c).post(`/api/v1/creator/live/${s.id}/end`).send({});
+    expect((await tip(v, '5')).body.error.code).toBe('LIVE_NOT_ACTIVE');
+    expect(await h.ctx.prisma.tip.count()).toBe(0);
+  });
+});

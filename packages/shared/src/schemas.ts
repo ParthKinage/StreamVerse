@@ -552,6 +552,9 @@ export const liveStreamDto = z.object({
   priceWei: weiString,
   /** Viewers who have bought access so far. */
   buyers: z.number(),
+  /** Tips received during this stream (before the platform fee), and how many. */
+  tipsWei: weiString,
+  tipsCount: z.number(),
   saveAsVod: z.boolean(),
   createdAt: isoDate,
   startedAt: isoDate.nullable(),
@@ -577,6 +580,8 @@ export const chatMessageDto = z.object({
   user: z.object({ id: z.string(), username: z.string() }),
   /** Written by the stream's creator. */
   fromCreator: z.boolean(),
+  /** Set when the message came with a tip: the amount tipped. */
+  tipWei: weiString.nullable().optional(),
 });
 export type ChatMessageDto = z.infer<typeof chatMessageDto>;
 
@@ -590,3 +595,9 @@ export const chatResponse = z.object({
 });
 export type ChatResponse = z.infer<typeof chatResponse>;
 export const postChatRequest = z.object({ text: z.string().trim().min(1).max(CHAT_MAX_LENGTH) });
+
+/** A tip during a live stream, with an optional message shown with it in the chat. */
+export const sendTipRequest = z.object({ amountWei: weiString, message: z.string().trim().max(CHAT_MAX_LENGTH).optional() });
+export type SendTipRequest = z.infer<typeof sendTipRequest>;
+export const sendTipResponse = z.object({ message: chatMessageDto, availableWei: weiString });
+export type SendTipResponse = z.infer<typeof sendTipResponse>;
