@@ -1,6 +1,7 @@
 /**
  * Mixes a screen (or window) and a camera into one picture, like a simple OBS scene: the screen fills the frame and the
- * camera sits in a corner.
+ * camera sits in a corner. With no screen it carries the camera on its own; because the encoder only ever sees this
+ * fixed-size picture, the camera underneath can be swapped mid-stream (front to back on a phone) without a break.
  *
  * Frames are read straight from the tracks (MediaStreamTrackProcessor) and drawn on an OffscreenCanvas. Nothing here
  * depends on page rendering or page timers, which browsers pause or slow down in background tabs, so the stream keeps
@@ -61,10 +62,11 @@ export class Compositor {
   private preview: HTMLCanvasElement | null = null;
   private startedAt = 0;
   private readers: Array<ReadableStreamDefaultReader<VideoFrame>> = [];
+  private cameraReader: ReadableStreamDefaultReader<VideoFrame> | null = null;
 
   constructor(
-    private readonly screen: MediaStreamTrack,
-    private readonly camera: MediaStreamTrack,
+    private readonly screen: MediaStreamTrack | null,
+    private camera: MediaStreamTrack,
     layout: Partial<Layout> = {},
   ) {
     this.layout = { width: 1280, height: 720, cameraShare: 0.25, corner: 'bottom-right', ...layout };
@@ -72,16 +74,28 @@ export class Compositor {
     const ctx = this.canvas.getContext('2d');
     if (!ctx) throw new Error('This browser cannot mix the screen and the camera.');
     this.ctx = ctx;
-    screen.addEventListener('ended', () => {
+    if (screen) {
+      screen.addEventListener('ended', () => {
+        this.screenEnded = true;
+      });
+    } else {
       this.screenEnded = true;
-    });
+    }
   }
 
   /** Starts reading both sources. Frames are only handed out once a sink is attached. */
   start(): void {
     this.startedAt = performance.now();
-    void this.readScreen();
-    void this.readCamera();
+    if (this.screen) void this.readScreen(this.screen);
+    void this.readCamera(this.camera);
+  }
+
+  /** Swaps the camera (front to back, or another device) while everything else, the stream included, keeps running. */
+  replaceCamera(track: MediaStreamTrack): void {
+    const old = this.cameraReader;
+    this.camera = track;
+    if (old) void old.cancel().catch(() => undefined);
+    if (!this.stopped) void this.readCamera(track);
   }
 
   /** Where finished frames go (the encoder); null stops handing them out without stopping the preview. */
@@ -104,8 +118,8 @@ export class Compositor {
     return reader;
   }
 
-  private async readScreen(): Promise<void> {
-    const reader = this.reader(this.screen);
+  private async readScreen(screen: MediaStreamTrack): Promise<void> {
+    const reader = this.reader(screen);
     while (!this.stopped) {
       const { value, done } = await reader.read().catch(() => ({ value: undefined, done: true }));
       if (done || !value) break;
@@ -116,9 +130,10 @@ export class Compositor {
     this.screenEnded = true;
   }
 
-  private async readCamera(): Promise<void> {
-    const reader = this.reader(this.camera);
-    while (!this.stopped) {
+  private async readCamera(camera: MediaStreamTrack): Promise<void> {
+    const reader = this.reader(camera);
+    this.cameraReader = reader;
+    while (!this.stopped && this.cameraReader === reader) {
       const { value, done } = await reader.read().catch(() => ({ value: undefined, done: true }));
       if (done || !value) break;
       try {
