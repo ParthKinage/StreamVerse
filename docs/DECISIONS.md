@@ -275,6 +275,16 @@ Not yet run on the hosted site.
 |---|---|---|
 | D-INSTANT-CREDITS | Coins bought and the welcome bonus count as spendable **the moment they are granted**, instead of after the relayer has written them to the chain and the indexer has read them back (seconds on a healthy relayer, much longer when it is short of gas). The balance is now on-chain escrow + coins on their way (`incomingCredits`: purchases and bonuses not failed, not yet seen as a `Deposited` event) − unapplied settlements − open session charges. To keep the chain consistent, a viewer's payments to creators are held by the settlement worker until all of that viewer's coins on their way have landed; otherwise the contract would refuse them (`InsufficientEscrow`, treated as permanent). The sweeper retries every 15 s, so held payments go out automatically. Trade-off: if a credit ever failed permanently after being spent (only possible for a zero amount or address), that viewer's payment would fail and need an admin retry. | owner decision; implementation choice |
 
+## Trust and moderation (owner request, 2026-10-16)
+
+| # | Decision | Status |
+|---|---|---|
+| D-REPORTS | Signed-in users report a **video**, a **chat message** or a **channel** with a reason (spam or scam, hateful or abusive, sexual content, copyright, something else) and an optional note. One report per person and item; reporting again updates it. At most 20 reports an hour per person. The admin **Reports** tab lists each reported item once, most reported first, with the reasons, the latest notes and the actions that fit it. | owner request; implementation choice |
+| D-HIDE | **Hiding** a video takes it out of every list and stops new playback; only its creator (who sees "Hidden by moderators" and the reason in Studio) and admins still see it. The creator cannot republish it (`409 VIDEO_HIDDEN`). A live stream on it is ended. Admins can restore it. Nothing is deleted, and earlier payments are unaffected. | implementation choice |
+| D-SUSPEND | **Suspending** an account takes effect at once: sign-in and token refresh are refused, every session is signed out, signed-in requests answer `403 ACCOUNT_SUSPENDED` (checked per request, cached for 30 s per user and cleared when an admin acts; a database error never locks people out), and any live stream of theirs is ended. Their videos stay up unless hidden separately. Admins cannot be suspended. | implementation choice |
+| D-ADMIN-OVERVIEW | The Reports tab opens with open reports, new users in the last 7 days, tips today (since midnight UTC), suspended accounts and hidden videos. | implementation choice |
+| D-SENTRY | Error tracking with **Sentry** (SDK 11.8.0) in the API and the website. It is **off** until the owner sets `SENTRY_DSN` on Render and `VITE_SENTRY_DSN` on Vercel; the website only downloads the SDK when a DSN is set. Only unexpected errors are sent (the API's 500s and errors a page could not recover from), with no user details, cookies, headers, query strings or request bodies, and no performance tracing. | owner decision (Sentry); implementation choice |
+
 ## Limitations and unverified items (UNKNOWN)
 
 | Item | Why it could not be completed in the build environment |

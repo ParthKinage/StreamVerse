@@ -61,6 +61,7 @@ export function videoToDto(
     processingStatus: v.processingStatus,
     transcodeProgress: v.transcodeProgress,
     failureReason: v.failureReason,
+    hiddenReason: v.hiddenAt ? (v.hiddenReason ?? 'Hidden by a moderator') : null,
     live: v.liveStream ? { streamId: v.liveStream.id, status: v.liveStream.status, startedAt: v.liveStream.startedAt?.toISOString() ?? null } : null,
     ...extras,
   };
@@ -74,6 +75,8 @@ export function userToDto(u: {
   walletAddress: string | null;
   createdAt: Date;
   creatorProfile?: { channelName: string } | null;
+  suspendedAt?: Date | null;
+  suspendReason?: string | null;
 }): UserDto {
   return {
     id: u.id,
@@ -83,6 +86,7 @@ export function userToDto(u: {
     walletAddress: u.walletAddress,
     channelName: u.creatorProfile?.channelName ?? null,
     createdAt: u.createdAt.toISOString(),
+    ...(u.suspendedAt !== undefined ? { suspended: Boolean(u.suspendedAt), suspendReason: u.suspendedAt ? (u.suspendReason ?? null) : null } : {}),
   };
 }
 

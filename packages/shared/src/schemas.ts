@@ -55,6 +55,9 @@ export const userDto = z.object({
   walletAddress: z.string().nullable(),
   channelName: z.string().nullable(),
   createdAt: isoDate,
+  /** Admin lists only: the account is suspended, and why. */
+  suspended: z.boolean().optional(),
+  suspendReason: z.string().nullable().optional(),
 });
 export type UserDto = z.infer<typeof userDto>;
 
@@ -184,6 +187,8 @@ export const videoDto = z.object({
   processingStatus: z.enum(['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED']),
   transcodeProgress: z.number(),
   failureReason: z.string().nullable(),
+  /** Set when a moderator hid the video (only its creator and admins still see it). */
+  hiddenReason: z.string().nullable().optional(),
   liked: z.boolean().optional(),
   inWatchlist: z.boolean().optional(),
   likesCount: z.number().optional(),
@@ -601,3 +606,60 @@ export const sendTipRequest = z.object({ amountWei: weiString, message: z.string
 export type SendTipRequest = z.infer<typeof sendTipRequest>;
 export const sendTipResponse = z.object({ message: chatMessageDto, availableWei: weiString });
 export type SendTipResponse = z.infer<typeof sendTipResponse>;
+
+// ---------- reports and moderation ----------
+export const reportTargetSchema = z.enum(['VIDEO', 'CHAT_MESSAGE', 'CHANNEL']);
+export type ReportTarget = z.infer<typeof reportTargetSchema>;
+export const reportReasonSchema = z.enum(['SPAM', 'ABUSE', 'SEXUAL', 'COPYRIGHT', 'OTHER']);
+export type ReportReason = z.infer<typeof reportReasonSchema>;
+
+export const createReportRequest = z.object({
+  targetType: reportTargetSchema,
+  targetId: z.string().trim().min(1).max(100),
+  reason: reportReasonSchema,
+  details: z.string().trim().max(500).optional(),
+});
+export type CreateReportRequest = z.infer<typeof createReportRequest>;
+
+/** One reported item in the admins' queue, with all its open reports counted together. */
+export const adminReportItem = z.object({
+  targetType: reportTargetSchema,
+  targetId: z.string(),
+  count: z.number(),
+  reasons: z.record(z.string(), z.number()),
+  /** The latest few notes reporters added. */
+  details: z.array(z.string()),
+  latestAt: isoDate,
+  target: z.object({
+    /** Video title, the message text, or the channel name. */
+    label: z.string(),
+    ownerUserId: z.string().nullable(),
+    ownerUsername: z.string().nullable(),
+    /** Where to look: the video, or the stream's video for a chat message. */
+    videoId: z.string().nullable(),
+    /** Already handled: hidden, removed or suspended (null when nothing has been done yet). */
+    state: z.string().nullable(),
+  }),
+});
+export type AdminReportItem = z.infer<typeof adminReportItem>;
+
+export const resolveReportRequest = z.object({
+  targetType: reportTargetSchema,
+  targetId: z.string().trim().min(1).max(100),
+  action: z.enum(['dismiss', 'hide_video', 'remove_message', 'suspend_owner']),
+  reason: z.string().trim().max(300).optional(),
+});
+export type ResolveReportRequest = z.infer<typeof resolveReportRequest>;
+
+export const moderationReasonRequest = z.object({ reason: z.string().trim().max(300).optional() });
+
+export const adminOverview = z.object({
+  /** Reported items still waiting for a decision. */
+  openReports: z.number(),
+  newUsers7d: z.number(),
+  /** Tips sent since midnight UTC. */
+  tipsTodayWei: weiString,
+  suspendedUsers: z.number(),
+  hiddenVideos: z.number(),
+});
+export type AdminOverview = z.infer<typeof adminOverview>;

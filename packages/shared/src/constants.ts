@@ -114,6 +114,8 @@ export const ERROR_CODES = [
   'LIVE_NOT_ACTIVE',
   'LIVE_SEGMENT_INVALID',
   'CHAT_CLOSED',
+  'ACCOUNT_SUSPENDED',
+  'VIDEO_HIDDEN',
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];
 

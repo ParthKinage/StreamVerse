@@ -3,6 +3,7 @@ import { CHAT_MAX_LENGTH, MAX_TIP_STRM, MIN_TIP_STRM, TIP_PRESETS_STRM, parseSTR
 import { money } from '../lib/format';
 import { ApiError, errorMessage } from '../api/client';
 import { liveApi } from '../api/endpoints';
+import { ReportDialog } from '../components/ReportDialog';
 
 const POLL_MS = 3000;
 
@@ -14,6 +15,10 @@ interface Props {
   postBlockedReason: string | null;
   /** The creator (or an admin) may remove messages. */
   canModerate?: boolean;
+  /** Signed-in viewers may report messages from others. */
+  canReport?: boolean;
+  /** The signed-in viewer's id, so their own messages have no Report button. */
+  myId?: string;
   /** Show the tip bar (viewers with access; never the creator). */
   canTip?: boolean;
   /** Called after a tip went through, with the viewer's new balance. */
@@ -26,7 +31,8 @@ interface Props {
  * Chat under a live stream. New messages are fetched every few seconds (simple polling works through the free hosting's
  * proxy, where long-lived connections do not).
  */
-export function LiveChat({ streamId, live, postBlockedReason, canModerate = false, canTip = false, onTipped, onNeedMoney }: Props): JSX.Element {
+export function LiveChat({ streamId, live, postBlockedReason, canModerate = false, canReport = false, myId, canTip = false, onTipped, onNeedMoney }: Props): JSX.Element {
+  const [reportingId, setReportingId] = useState<number | null>(null);
   const [messages, setMessages] = useState<ChatMessageDto[]>([]);
   const [open, setOpen] = useState(live);
   const [text, setText] = useState('');
@@ -164,6 +170,10 @@ export function LiveChat({ streamId, live, postBlockedReason, canModerate = fals
               <button type="button" className="link-btn chat-remove" aria-label={`Remove message from ${m.user.username}`} onClick={() => void remove(m.id)}>
                 ×
               </button>
+            ) : canReport && m.user.id !== myId ? (
+              <button type="button" className="link-btn chat-remove" aria-label={`Report message from ${m.user.username}`} onClick={() => setReportingId(m.id)}>
+                Report
+              </button>
             ) : null}
           </li>
         ))}
@@ -230,6 +240,7 @@ export function LiveChat({ streamId, live, postBlockedReason, canModerate = fals
           {error}
         </p>
       ) : null}
+      {reportingId !== null ? <ReportDialog targetType="CHAT_MESSAGE" targetId={String(reportingId)} onClose={() => setReportingId(null)} /> : null}
     </section>
   );
 }

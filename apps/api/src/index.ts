@@ -8,9 +8,11 @@ import { startMediaReconciler, startTranscodeListener } from './modules/media';
 import { getFeeBps, startSettlementWorker } from './modules/settlement';
 import { startReaper } from './modules/watch';
 import { startLiveReaper } from './modules/live';
+import { initMonitoring } from './infra/monitoring';
 
 async function main(): Promise<void> {
   const env = loadEnv();
+  if (await initMonitoring(env.SENTRY_DSN, env.NODE_ENV)) console.log('Error tracking is on');
   const ctx = createContext(env);
   const app = createApp(ctx);
 

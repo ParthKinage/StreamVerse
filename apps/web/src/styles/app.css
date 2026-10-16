@@ -484,3 +484,8 @@ dl.stats { max-width: 720px; margin: 14px 0; }
 .tip-choice.active { border-color: var(--accent); color: var(--text); }
 .tip-other { width: 80px; }
 .tip-bar .btn { margin-left: auto; }
+
+/* Reports */
+.report-reasons { border: none; display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
+.btn.ghost { background: transparent; border-color: transparent; color: var(--text-3); }
+.btn.ghost:hover { color: var(--text); }

@@ -5,6 +5,7 @@ import { DOMAIN_EVENTS } from '@tesor_gp/shared';
 import type { AppContext } from '../../context';
 import { signAccessToken } from '../../middleware/auth';
 import { AppError, conflict, unauthenticated } from '../../middleware/errors';
+import { accountSuspended } from '../../middleware/auth';
 import { isUniqueViolation, parseDurationMs, userToDto } from '../common';
 import { ensureManagedWallet, isManaged } from '../managed/wallets';
 
@@ -76,6 +77,7 @@ export async function login(ctx: AppContext, input: LoginRequest): Promise<Issue
   });
   const ok = await bcrypt.compare(input.password, user?.passwordHash ?? DUMMY_HASH);
   if (!user || !ok) throw new AppError(401, 'INVALID_CREDENTIALS', 'Incorrect email or password');
+  if (user.suspendedAt) throw accountSuspended();
   return issue(ctx, user);
 }
 
@@ -99,6 +101,7 @@ export async function refresh(ctx: AppContext, token: string | undefined): Promi
     include: { creatorProfile: { select: { channelName: true } } },
   });
   if (!user) throw unauthenticated('User no longer exists');
+  if (user.suspendedAt) throw accountSuspended();
   return issue(ctx, user);
 }
 
