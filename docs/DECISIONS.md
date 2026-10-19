@@ -275,6 +275,15 @@ Not yet run on the hosted site.
 |---|---|---|
 | D-INSTANT-CREDITS | Coins bought and the welcome bonus count as spendable **the moment they are granted**, instead of after the relayer has written them to the chain and the indexer has read them back (seconds on a healthy relayer, much longer when it is short of gas). The balance is now on-chain escrow + coins on their way (`incomingCredits`: purchases and bonuses not failed, not yet seen as a `Deposited` event) − unapplied settlements − open session charges. To keep the chain consistent, a viewer's payments to creators are held by the settlement worker until all of that viewer's coins on their way have landed; otherwise the contract would refuse them (`InsufficientEscrow`, treated as permanent). The sweeper retries every 15 s, so held payments go out automatically. Trade-off: if a credit ever failed permanently after being spent (only possible for a zero amount or address), that viewer's payment would fail and need an admin retry. | owner decision; implementation choice |
 
+## Brand (owner request, 2026-10-19)
+
+| # | Decision | Status |
+|---|---|---|
+| D-BRAND-MARK | Logo from the owner's reference board ("multiverse rings"): a streak of light running into half-discs that grow left to right, the last one red, in front of a grey world; drawn as SVG (`components/Logo.tsx`), so it follows the theme. Wordmark "STREAMVERSE" in wide capitals with a red peak (no crossbar) for the A; tagline "WATCH — BEYOND". Favicon (`public/favicon.svg`), home-screen icon (`public/apple-touch-icon.png`) and the loading screen use the same mark. | owner decision |
+| D-BRAND-PALETTE | The reference palette: Deep Space #0b0b0c, Starlight #f7f7f8, Cosmic Red #e11d2e, Nebula Gray #9ca3af. The red is shifted slightly per theme (#ef3545 on dark, #cf1428 on light) so red text and buttons keep a contrast of at least 4.5:1. | owner decision; contrast adjustment |
+| D-SQUIRCLES | Every shape is a squircle (owner request): small controls 12 px, panels 20 px, media 26 px, drawn with `corner-shape: squircle` where the browser supports it (Chrome, Edge) and as ordinary rounded corners elsewhere. Channel icons are squircle tiles with the channel's first letter (channels have no uploaded picture yet). A small red four-pointed star marks section titles. | owner decision |
+| D-CHANNELS-EMPTY-SEARCH | The Channels tab of an empty search lists the 24 most followed channels instead of nothing. | implementation choice |
+
 ## Trust and moderation (owner request, 2026-10-16)
 
 | # | Decision | Status |

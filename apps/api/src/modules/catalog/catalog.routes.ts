@@ -54,7 +54,8 @@ export function catalogRoutes(ctx: AppContext): Router {
 
   router.get('/creators', publicWhenAnonymous(60), optional, validate('query', creatorSearchQuery), async (req, res) => {
     const q = req.query as unknown as CreatorSearchQuery;
-    res.json({ items: q.q ? await service.searchCreators(ctx, q.q, req.user?.id) : [] });
+    // Without a search term, the most followed channels (for the Channels tab of an empty search).
+    res.json({ items: await service.searchCreators(ctx, q.q ?? '', req.user?.id, q.q ? 6 : 24) });
   });
 
   router.get('/creators/:id', publicWhenAnonymous(60), optional, async (req, res) => {
