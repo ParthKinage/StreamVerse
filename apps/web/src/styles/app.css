@@ -1,33 +1,33 @@
 /*
- * StreamVerse, "Infrared on concrete": graphite (dark) and concrete grey (light) with one loud infrared red. Square
- * corners for content, squircle (superellipse) icons, and a dock-style island of icons on the left that grows under the
- * pointer like the macOS Dock. Everything that moves stops for people who ask for reduced motion. The video player is a
- * dark stage in both themes.
+ * StreamVerse brand: Deep Space (#0b0b0c), Starlight (#f7f7f8), Cosmic Red (#e11d2e; #ef3545 on dark and #cf1428 on light so red text stays readable) and Nebula Gray (#9ca3af), in a
+ * dark and a light theme. Every shape is a squircle (a superellipse: a rounded square with smooth, continuous corners),
+ * from buttons and fields to cards, video thumbnails, the player and channel icons. Everything that moves stops for
+ * people who ask for reduced motion. The video player is a dark stage in both themes.
  */
 :root {
-  --bg: #1a1a1a;
-  --surface: #222222;
-  --surface-2: #2a2a2a;
-  --surface-3: #333333;
-  --line: #2f2f2f;
-  --line-strong: #444444;
-  --text: #f2f1ee;
-  --text-2: #b7b4ad;
-  --text-3: #9c9992;
-  --accent: #ff3b30;
-  --accent-hover: #ff5a50;
-  --on-accent: #111111;
-  --live: #ff3b30;
-  --danger: #ff6b5e;
+  --bg: #0b0b0c;
+  --surface: #141416;
+  --surface-2: #1a1a1d;
+  --surface-3: #232327;
+  --line: #26262a;
+  --line-strong: #3a3a40;
+  --text: #f7f7f8;
+  --text-2: #c5c8ce;
+  --text-3: #9ca3af;
+  --accent: #ef3545;
+  --accent-hover: #f45764;
+  --on-accent: #0b0b0c;
+  --live: #ef3545;
+  --danger: #f0565f;
   --ok: #5fd38a;
   --warn: #f5c451;
-  --topbar-bg: rgba(26, 26, 26, 0.88);
-  --spot-a: rgba(255, 59, 48, 0.07);
-  --spot-b: rgba(242, 241, 238, 0.04);
+  --topbar-bg: rgba(11, 11, 12, 0.86);
+  --spot-a: rgba(225, 29, 46, 0.08);
+  --spot-b: rgba(247, 247, 248, 0.03);
   --veil: rgba(8, 8, 8, 0.78);
-  --hover-wash: rgba(242, 241, 238, 0.08);
-  --accent-wash: rgba(255, 59, 48, 0.1);
-  --skeleton-hi: #303030;
+  --hover-wash: rgba(247, 247, 248, 0.07);
+  --accent-wash: rgba(225, 29, 46, 0.12);
+  --skeleton-hi: #202024;
   color-scheme: dark;
   --font-head: 'Manrope', 'Inter', system-ui, sans-serif;
   --font-body: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -37,56 +37,56 @@
 
 /* Light theme: when the viewer picks it, or when their device prefers light and they have not picked dark. */
 :root[data-theme='light'] {
-  --bg: #d9d6d0;
-  --surface: #eceae5;
-  --surface-2: #e3e0da;
-  --surface-3: #cfcbc4;
-  --line: #c4c0b8;
-  --line-strong: #a9a49b;
-  --text: #111111;
-  --text-2: #4a4843;
-  --text-3: #57554f;
-  --accent: #c4001a;
-  --accent-hover: #a30016;
+  --bg: #f7f7f8;
+  --surface: #ffffff;
+  --surface-2: #efeff1;
+  --surface-3: #e4e4e8;
+  --line: #e2e2e6;
+  --line-strong: #c9cad0;
+  --text: #0b0b0c;
+  --text-2: #3d4047;
+  --text-3: #5c616b;
+  --accent: #cf1428;
+  --accent-hover: #b0101f;
   --on-accent: #ffffff;
-  --live: #c4001a;
-  --danger: #b0001a;
+  --live: #cf1428;
+  --danger: #c41424;
   --ok: #1f7a3f;
   --warn: #7a5200;
-  --topbar-bg: rgba(217, 214, 208, 0.9);
-  --spot-a: rgba(196, 0, 26, 0.06);
-  --spot-b: rgba(17, 17, 17, 0.04);
+  --topbar-bg: rgba(247, 247, 248, 0.9);
+  --spot-a: rgba(225, 29, 46, 0.05);
+  --spot-b: rgba(11, 11, 12, 0.03);
   --veil: rgba(8, 8, 8, 0.72);
-  --hover-wash: rgba(17, 17, 17, 0.06);
-  --accent-wash: rgba(196, 0, 26, 0.07);
-  --skeleton-hi: #e6e3de;
+  --hover-wash: rgba(11, 11, 12, 0.05);
+  --accent-wash: rgba(225, 29, 46, 0.07);
+  --skeleton-hi: #f2f2f4;
   color-scheme: light;
 }
 @media (prefers-color-scheme: light) {
   :root:not([data-theme='dark']) {
-    --bg: #d9d6d0;
-    --surface: #eceae5;
-    --surface-2: #e3e0da;
-    --surface-3: #cfcbc4;
-    --line: #c4c0b8;
-    --line-strong: #a9a49b;
-    --text: #111111;
-    --text-2: #4a4843;
-    --text-3: #57554f;
-    --accent: #c4001a;
-    --accent-hover: #a30016;
+    --bg: #f7f7f8;
+    --surface: #ffffff;
+    --surface-2: #efeff1;
+    --surface-3: #e4e4e8;
+    --line: #e2e2e6;
+    --line-strong: #c9cad0;
+    --text: #0b0b0c;
+    --text-2: #3d4047;
+    --text-3: #5c616b;
+    --accent: #cf1428;
+    --accent-hover: #b0101f;
     --on-accent: #ffffff;
-    --live: #c4001a;
-    --danger: #b0001a;
+    --live: #cf1428;
+    --danger: #c41424;
     --ok: #1f7a3f;
     --warn: #7a5200;
-    --topbar-bg: rgba(217, 214, 208, 0.9);
-    --spot-a: rgba(196, 0, 26, 0.06);
-    --spot-b: rgba(17, 17, 17, 0.04);
+    --topbar-bg: rgba(247, 247, 248, 0.9);
+    --spot-a: rgba(225, 29, 46, 0.05);
+    --spot-b: rgba(11, 11, 12, 0.03);
     --veil: rgba(8, 8, 8, 0.72);
-    --hover-wash: rgba(17, 17, 17, 0.06);
-    --accent-wash: rgba(196, 0, 26, 0.07);
-    --skeleton-hi: #e6e3de;
+    --hover-wash: rgba(11, 11, 12, 0.05);
+    --accent-wash: rgba(225, 29, 46, 0.07);
+    --skeleton-hi: #f2f2f4;
     color-scheme: light;
   }
 }
@@ -538,3 +538,59 @@ dl.stats { max-width: 720px; margin: 14px 0; }
 .report-reasons { border: none; display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
 .btn.ghost { background: transparent; border-color: transparent; color: var(--text-3); }
 .btn.ghost:hover { color: var(--text); }
+
+/* Brand: logo, wordmark, tagline */
+.logo { display: inline-flex; align-items: center; gap: 12px; color: var(--text); }
+.logo-mark { flex: none; display: block; }
+.wordmark { display: inline-flex; align-items: center; font-family: var(--font-head); font-weight: 500; font-size: 0.95rem; letter-spacing: 0.38em; margin-right: -0.38em; line-height: 1; white-space: nowrap; }
+.wordmark-a { width: 0.86em; height: 0.78em; margin-right: 0.38em; color: var(--accent); flex: none; }
+.tagline { display: inline-flex; align-items: center; gap: 14px; font-size: 0.68rem; font-weight: 500; letter-spacing: 0.5em; text-transform: uppercase; color: var(--text-3); }
+.tagline i { display: block; width: 36px; height: 1px; background: var(--accent); }
+.brand { display: inline-flex; letter-spacing: normal; text-transform: none; font-size: inherit; }
+.brand:hover { color: var(--text); }
+.footer .tagline { justify-content: center; }
+
+/* Channel icons: squircle tiles with the channel's first letter */
+.channel-avatar { display: inline-grid; place-items: center; flex: none; background: linear-gradient(180deg, var(--surface-3), var(--surface)); border: 1px solid var(--line-strong); box-shadow: inset 0 -2px 0 var(--accent); color: var(--text); font-family: var(--font-head); font-weight: 600; }
+.channel-avatar.xs { width: 22px; height: 22px; font-size: 0.66rem; }
+.channel-avatar.sm { width: 30px; height: 30px; font-size: 0.8rem; }
+.channel-avatar.md { width: 44px; height: 44px; font-size: 1.05rem; }
+.channel-avatar.lg { width: 88px; height: 88px; font-size: 2rem; }
+.channel-avatar-letter { line-height: 1; }
+.channel-head.with-avatar { display: flex; align-items: flex-end; gap: 20px; }
+.channel-info { min-width: 0; }
+@media (max-width: 480px) {
+  .wordmark { font-size: 0.82rem; letter-spacing: 0.28em; margin-right: -0.28em; }
+  .wordmark-a { margin-right: 0.28em; }
+  .logo { gap: 8px; }
+}
+.creator-line { display: inline-flex; align-items: center; gap: 8px; }
+
+/* Star element: a four-pointed red star before section titles */
+.section-head > h2::before, .section > h2::before, .table-title::before { content: ''; display: inline-block; width: 0.6em; height: 0.6em; margin-right: 0.55em; vertical-align: 0.05em; background: var(--accent); clip-path: polygon(50% 0, 60% 40%, 100% 50%, 60% 60%, 50% 100%, 40% 60%, 0 50%, 40% 40%); }
+
+/*
+ * Squircles. Corners are rounded everywhere; browsers that support corner-shape (Chrome and Edge) draw them as smooth
+ * superellipses, the others as ordinary rounded corners. Sizes: small controls, panels, and media.
+ */
+:root { --r-sm: 12px; --r-md: 20px; --r-lg: 26px; }
+.btn, .icon-btn, .tool-btn, .badge, .small-badge, .chip, .tip-choice, .segmented, .dock-label, .toast, .notice, .code, .skip-link, .player-banner,
+select, textarea, input:not([type='range']):not([type='file']):not([type='checkbox']):not([type='radio']),
+.player-controls select, .channel-avatar.xs, .channel-avatar.sm {
+  border-radius: var(--r-sm);
+  corner-shape: squircle;
+}
+.card, .modal, .empty-state, .error-state, .live-chat, .live-source, .obs-help, .unlock-panel, .dropzone, .thumb-picker-frame, .wake-panel,
+.coin-game, .chart-card, .kpi, .how-step, .cost-meter, .live-preview, .channel-avatar.md, .chat-list li.chat-tip, .table {
+  border-radius: var(--r-md);
+  corner-shape: squircle;
+}
+.thumb, .skeleton.thumb, .featured-media .thumb, .player, .channel-avatar.lg, .dock-island {
+  border-radius: var(--r-lg);
+  corner-shape: squircle;
+}
+.search #site-search { border-radius: var(--r-md); corner-shape: squircle; }
+.segmented, .table, .thumb, .player { overflow: hidden; }
+.segmented button { border-radius: 0; }
+.progress-bar { border-radius: 0; }
+.badge.live::before, .live-dot, .spinner { border-radius: 50%; corner-shape: round; }

@@ -3,8 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#1a1a1a" media="(prefers-color-scheme: dark)" />
-    <meta name="theme-color" content="#d9d6d0" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0b0b0c" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f7f7f8" media="(prefers-color-scheme: light)" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <title>StreamVerse | Pay-As-You-Watch Web3 Streaming</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -17,34 +19,32 @@
       } catch (e) {}
     </script>
     <style>
-      /* First paint, before the app's code has downloaded: the wordmark and an oxblood line sweeping beneath it. */
-      html, body { margin: 0; background: #1a1a1a; }
-      :where(:root[data-theme='light']) body { background: #d9d6d0; }
-      :root[data-theme='light'] .boot { color: #111111; }
-      :root[data-theme='light'] .boot-line { background: #c4c0b8; }
-      :root[data-theme='light'] .boot-line::after { background: #c4001a; }
+      /* First paint, before the app's code has downloaded: the mark, the wordmark and the tagline's red rule sweeping. */
+      html, body { margin: 0; background: #0b0b0c; }
+      .boot { --boot-red: #ef3545; position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; color: #f7f7f8; font-family: Manrope, Inter, system-ui, sans-serif; }
+      :where(:root[data-theme='light']) body { background: #f7f7f8; }
+      :root[data-theme='light'] .boot { color: #0b0b0c; --boot-red: #cf1428; }
       @media (prefers-color-scheme: light) {
-        :where(:root:not([data-theme='dark'])) body { background: #d9d6d0; }
-        :root:not([data-theme='dark']) .boot { color: #111111; }
-        :root:not([data-theme='dark']) .boot-line { background: #c4c0b8; }
-        :root:not([data-theme='dark']) .boot-line::after { background: #c4001a; }
+        :where(:root:not([data-theme='dark'])) body { background: #f7f7f8; }
+        :root:not([data-theme='dark']) .boot { color: #0b0b0c; --boot-red: #cf1428; }
       }
-      .boot { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; color: #f2f1ee; font-family: Manrope, Inter, system-ui, sans-serif; }
-      .boot-mark { font-size: 15px; font-weight: 700; letter-spacing: 0.5em; padding-left: 0.5em; animation: boot-in 1.2s ease both; }
-      .boot-line { position: relative; width: 160px; height: 1px; background: #2f2f2f; overflow: hidden; }
-      .boot-line::after { content: ''; position: absolute; top: 0; left: -40%; width: 40%; height: 1px; background: #ff3b30; animation: boot-sweep 1.4s cubic-bezier(0.22, 0.61, 0.36, 1) infinite; }
-      .boot-note { font: 600 10px Inter, system-ui, sans-serif; letter-spacing: 0.24em; text-transform: uppercase; color: #9c9992; }
-      @keyframes boot-in { from { opacity: 0; letter-spacing: 0.8em; } }
+      .boot-symbol { width: 84px; height: 70px; animation: boot-in 1.2s ease both; }
+      .boot-mark { font-size: 15px; font-weight: 500; letter-spacing: 0.5em; padding-left: 0.5em; display: flex; align-items: center; animation: boot-in 1.2s ease both; }
+      .boot-mark svg { width: 0.86em; height: 0.78em; margin-right: 0.5em; color: var(--boot-red); }
+      .boot-tag { display: flex; align-items: center; gap: 14px; font: 500 10px Inter, system-ui, sans-serif; letter-spacing: 0.5em; padding-left: 0.5em; color: #9ca3af; }
+      .boot-line { position: relative; width: 40px; height: 1px; background: rgba(156, 163, 175, 0.35); overflow: hidden; }
+      .boot-line::after { content: ''; position: absolute; top: 0; left: -60%; width: 60%; height: 1px; background: var(--boot-red); animation: boot-sweep 1.4s cubic-bezier(0.22, 0.61, 0.36, 1) infinite; }
+      @keyframes boot-in { from { opacity: 0; transform: translateY(4px); } }
       @keyframes boot-sweep { to { left: 100%; } }
-      @media (prefers-reduced-motion: reduce) { .boot-mark, .boot-line::after { animation: none; } }
+      @media (prefers-reduced-motion: reduce) { .boot-symbol, .boot-mark, .boot-line::after { animation: none; } }
     </style>
   </head>
   <body>
     <div id="root">
       <div class="boot" role="status" aria-label="Loading StreamVerse">
-        <div class="boot-mark">STREAMVERSE</div>
-        <div class="boot-line"></div>
-        <div class="boot-note">Pay only for what you watch</div>
+        <svg class="boot-symbol" viewBox="0 0 120 100" aria-hidden="true"><path d="M86 16 A34 34 0 0 1 86 84 A14 34 0 0 1 86 16 Z" fill="currentColor" opacity="0.32"/><path d="M2 50 H34" stroke="currentColor" stroke-width="1.4" opacity="0.55"/><path d="M14 46 H30 M18 54 H30" stroke="currentColor" stroke-width="0.8" opacity="0.35"/><path d="M30 42 A4 8 0 0 1 30 58 A1.4 8 0 0 0 30 42 Z" fill="currentColor" opacity="0.35"/><path d="M38 36 A7 14 0 0 1 38 64 A2.45 14 0 0 0 38 36 Z" fill="currentColor" opacity="0.5"/><path d="M48 29 A10 21 0 0 1 48 71 A3.5 21 0 0 0 48 29 Z" fill="currentColor" opacity="0.68"/><path d="M60 21 A13 29 0 0 1 60 79 A4.55 29 0 0 0 60 21 Z" fill="currentColor" opacity="0.86"/><path d="M74 13 A16 37 0 0 1 74 87 A5.6 37 0 0 0 74 13 Z" fill="var(--boot-red)" opacity="1"/></svg>
+        <div class="boot-mark" aria-hidden="true">STRE<svg viewBox="0 0 20 22"><path d="M2 21 L10 2 L18 21" fill="none" stroke="currentColor" stroke-width="2.2"/></svg>MVERSE</div>
+        <div class="boot-tag" aria-hidden="true">WATCH <span class="boot-line"></span> BEYOND</div>
       </div>
     </div>
     <script type="module" src="/src/main.tsx"></script>

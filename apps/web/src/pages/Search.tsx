@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { ChannelAvatar } from '../components/ChannelAvatar';
 import { Link, useSearchParams } from 'react-router-dom';
 import type { VideoDto } from '@tesor_gp/shared';
 import { useAuth } from '../auth/AuthContext';
@@ -61,6 +62,7 @@ function ChannelResults({ q }: { q: string }): JSX.Element {
     <ul className="channel-list" aria-label="Channels" data-testid="channel-results">
       {res.data.items.map((c) => (
         <li key={c.id} className="channel-item">
+          <ChannelAvatar name={c.channelName} size="md" />
           <Link to={`/channel/${c.id}`} className="channel-name">
             {c.channelName}
           </Link>

@@ -15,6 +15,7 @@ import { formatDuration, formatViews, money, costLabel, timeAgo, toBig } from '.
 import { Player } from '../player/Player';
 import { LiveChat } from '../live/LiveChat';
 import { ReportDialog } from '../components/ReportDialog';
+import { ChannelAvatar } from '../components/ChannelAvatar';
 import { usePlaybackSession } from '../player/usePlaybackSession';
 import { BuyCoinsDialog } from '../wallet/BuyCoinsDialog';
 import { TopUpDialog } from '../wallet/TopUpDialog';
@@ -204,7 +205,11 @@ export default function Watch(): JSX.Element {
           {video.title}
         </h1>
         <p className="muted">
-          <Link to={`/channel/${video.creator.id}`}>{video.creator.channelName}</Link> ·{' '}
+          <Link to={`/channel/${video.creator.id}`} className="creator-line">
+            <ChannelAvatar name={video.creator.channelName} size="sm" />
+            {video.creator.channelName}
+          </Link>{' '}
+          ·{' '}
           {onAir ? `${video.live?.viewers ?? 0} watching now` : `${formatViews(video.viewsCount)} · ${timeAgo(video.createdAt)}`} · {costLabel(video)}
           {video.live?.status === 'ENDED' ? ' · recorded live' : ''}
         </p>

@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { ChannelAvatar } from './ChannelAvatar';
 import type { VideoDto } from '@tesor_gp/shared';
 import { useOwnedIds } from '../api/queries';
 import { formatDuration, formatViews, moneyTitle, costLabel, timeAgo } from '../lib/format';
@@ -26,7 +27,10 @@ export function VideoCard({ video, progress }: { video: VideoDto; progress?: num
           <Link to={`/watch/${video.id}`}>{video.title}</Link>
         </h3>
         <p className="muted small">
-          <Link to={`/channel/${video.creator.id}`}>{video.creator.channelName}</Link>
+          <Link to={`/channel/${video.creator.id}`} className="creator-line">
+            <ChannelAvatar name={video.creator.channelName} size="xs" />
+            {video.creator.channelName}
+          </Link>
         </p>
         <p className="muted small">
           {onAir ? `${video.live?.viewers ?? 0} watching now` : `${formatViews(video.viewsCount)} · ${timeAgo(video.createdAt)}`}

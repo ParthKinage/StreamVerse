@@ -7,6 +7,7 @@ import { ErrorBoundary } from './ErrorBoundary';
 import { PageSpinner } from './States';
 import { WakePanel } from './WakePanel';
 import { ThemeToggle } from './ThemeToggle';
+import { Logo, Tagline } from './Logo';
 
 export function Layout(): JSX.Element {
   const { user, logout } = useAuth();
@@ -28,8 +29,8 @@ export function Layout(): JSX.Element {
       <header className="topbar">
         <div className="topbar-side" aria-hidden="true" />
         <div className="topbar-center">
-          <Link to="/" className="brand">
-            Stream<span className="brand-accent">Verse</span>
+          <Link to="/" className="brand" aria-label="StreamVerse">
+            <Logo />
           </Link>
           <form className="search" role="search" onSubmit={onSearch}>
             <label className="sr-only" htmlFor="site-search">
@@ -67,7 +68,9 @@ export function Layout(): JSX.Element {
         </ErrorBoundary>
       </main>
       <WakePanel />
-      <footer className="footer muted small">StreamVerse · pay only for what you watch</footer>
+      <footer className="footer muted small">
+        <Tagline />
+      </footer>
     </div>
   );
 }

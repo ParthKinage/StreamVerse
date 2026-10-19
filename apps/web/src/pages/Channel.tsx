@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useAuth } from '../auth/AuthContext';
 import { ReportDialog } from '../components/ReportDialog';
+import { ChannelAvatar } from '../components/ChannelAvatar';
 import { useParams } from 'react-router-dom';
 import { ApiError, errorMessage } from '../api/client';
 import { catalogApi } from '../api/endpoints';
@@ -15,29 +16,50 @@ export default function Channel(): JSX.Element {
   const { id = '' } = useParams();
   const { user } = useAuth();
   const [reporting, setReporting] = useState(false);
-  const q = useQuery({ queryKey: creatorKey(id), queryFn: () => catalogApi.creator(id), retry: (n, e) => !(e instanceof ApiError && e.status === 404) && n < 2 });
+  const q = useQuery({
+    queryKey: creatorKey(id),
+    queryFn: () => catalogApi.creator(id),
+    retry: (n, e) => !(e instanceof ApiError && e.status === 404) && n < 2,
+  });
   if (q.isPending) return <PageSpinner />;
-  if (q.isError) return q.error instanceof ApiError && q.error.status === 404 ? <NotFound /> : <ErrorState message={errorMessage(q.error)} onRetry={() => void q.refetch()} />;
+  if (q.isError)
+    return q.error instanceof ApiError && q.error.status === 404 ? (
+      <NotFound />
+    ) : (
+      <ErrorState message={errorMessage(q.error)} onRetry={() => void q.refetch()} />
+    );
   const c = q.data;
   return (
     <div className="page">
-      <header className="channel-head">
-        <div className="channel-title">
-          <h1>{c.channelName}</h1>
-          <FollowButton creatorId={c.id} />
-          {user && user.username !== c.username ? (
-            <button type="button" className="btn ghost" onClick={() => setReporting(true)}>
-              Report
-            </button>
+      <header className="channel-head with-avatar">
+        <ChannelAvatar name={c.channelName} size="lg" />
+        <div className="channel-info">
+          <div className="channel-title">
+            <h1>{c.channelName}</h1>
+            <FollowButton creatorId={c.id} />
+            {user && user.username !== c.username ? (
+              <button type="button" className="btn ghost" onClick={() => setReporting(true)}>
+                Report
+              </button>
+            ) : null}
+          </div>
+          {reporting ? (
+            <ReportDialog targetType="CHANNEL" targetId={c.id} onClose={() => setReporting(false)} />
           ) : null}
+          <p className="muted">
+            @{c.username} · {c.followersCount.toLocaleString()} follower{c.followersCount === 1 ? '' : 's'} ·{' '}
+            {c.videoCount} video{c.videoCount === 1 ? '' : 's'} · {formatViews(c.totalViews)}
+          </p>
+          {c.bio ? <p>{c.bio}</p> : null}
         </div>
-        {reporting ? <ReportDialog targetType="CHANNEL" targetId={c.id} onClose={() => setReporting(false)} /> : null}
-        <p className="muted">
-          @{c.username} · {c.followersCount.toLocaleString()} follower{c.followersCount === 1 ? '' : 's'} · {c.videoCount} video{c.videoCount === 1 ? '' : 's'} · {formatViews(c.totalViews)}
-        </p>
-        {c.bio ? <p>{c.bio}</p> : null}
       </header>
-      <VideoList queryKey={['videos', 'channel', id]} fetchPage={(cursor) => catalogApi.list({ creatorId: id, sort: 'newest', ...(cursor ? { cursor } : {}) })} empty={<EmptyState title="No published videos yet" />} />
+      <VideoList
+        queryKey={['videos', 'channel', id]}
+        fetchPage={(cursor) =>
+          catalogApi.list({ creatorId: id, sort: 'newest', ...(cursor ? { cursor } : {}) })
+        }
+        empty={<EmptyState title="No published videos yet" />}
+      />
     </div>
   );
 }

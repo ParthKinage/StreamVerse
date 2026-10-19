@@ -99,6 +99,7 @@ describe('owned videos and search filters', () => {
 
     const res = await h.req().get('/api/v1/creators').query({ q: 'mountain' });
     expect(res.body.items.map((c: { channelName: string }) => c.channelName)).toEqual(['Mountain Runs', 'Mountain Diaries']);
-    expect((await h.req().get('/api/v1/creators')).body.items).toEqual([]);
+    // Without a search term: every channel, most followed first.
+    expect((await h.req().get('/api/v1/creators')).body.items.map((c: { channelName: string }) => c.channelName)).toEqual(['Mountain Runs', 'Mountain Diaries']);
   });
 });

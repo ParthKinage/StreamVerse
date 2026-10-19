@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { ChannelAvatar } from '../components/ChannelAvatar';
 import { Link } from 'react-router-dom';
 import { errorMessage } from '../api/client';
 import { socialApi } from '../api/endpoints';
@@ -23,6 +24,7 @@ export default function Following(): JSX.Element {
           <ul className="channel-list" aria-label="Channels you follow">
             {q.data.items.map((c) => (
               <li key={c.id} className="channel-item">
+                <ChannelAvatar name={c.channelName} size="md" />
                 <Link to={`/channel/${c.id}`} className="channel-name">
                   {c.channelName}
                 </Link>
