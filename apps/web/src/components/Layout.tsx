@@ -29,7 +29,7 @@ export function Layout(): JSX.Element {
       <header className="topbar">
         <div className="topbar-side" aria-hidden="true" />
         <div className="topbar-center">
-          <Link to="/" className="brand" aria-label="StreamVerse home">
+          <Link to="/" className="brand" aria-label="StreamVerse">
             <Logo />
           </Link>
           <form className="search" role="search" onSubmit={onSearch}>
