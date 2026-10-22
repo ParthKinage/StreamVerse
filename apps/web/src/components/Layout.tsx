@@ -8,6 +8,7 @@ import { PageSpinner } from './States';
 import { WakePanel } from './WakePanel';
 import { ThemeToggle } from './ThemeToggle';
 import { Logo, Tagline } from './Logo';
+import { WalkthroughReturn } from './WalkthroughReturn';
 
 export function Layout(): JSX.Element {
   const { user, logout } = useAuth();
@@ -68,6 +69,7 @@ export function Layout(): JSX.Element {
         </ErrorBoundary>
       </main>
       <WakePanel />
+      <WalkthroughReturn />
       <footer className="footer muted small">
         <Tagline />
       </footer>

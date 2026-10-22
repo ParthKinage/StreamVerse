@@ -594,3 +594,23 @@ select, textarea, input:not([type='range']):not([type='file']):not([type='checkb
 .segmented button { border-radius: 0; }
 .progress-bar { border-radius: 0; }
 .badge.live::before, .live-dot, .spinner { border-radius: 50%; corner-shape: round; }
+
+/* Settings → Walkthrough */
+.walkthrough { display: grid; grid-template-columns: minmax(200px, 280px) minmax(0, 1fr); gap: 24px; align-items: start; }
+.walk-index { list-style: none; display: flex; flex-direction: column; gap: 2px; position: sticky; top: 88px; }
+.walk-chapter { display: flex; align-items: baseline; gap: 10px; width: 100%; text-align: left; background: transparent; border: none; color: var(--text-2); font: inherit; font-size: 0.9rem; padding: 9px 12px; cursor: pointer; border-radius: var(--r-sm); corner-shape: squircle; }
+.walk-chapter:hover { background: var(--hover-wash); color: var(--text); }
+.walk-chapter.active { background: var(--accent-wash); color: var(--text); font-weight: 600; }
+.walk-num { font-family: var(--font-head); font-size: 0.72rem; font-weight: 700; letter-spacing: 0.1em; color: var(--accent); font-variant-numeric: tabular-nums; }
+.walk-step h2 { font-size: 1.5rem; margin: 6px 0 10px; }
+.walk-intro { color: var(--text-2); font-size: 1rem; max-width: 64ch; }
+.walk-points { margin: 16px 0 18px 20px; display: grid; gap: 8px; max-width: 70ch; }
+.walk-points li::marker { color: var(--accent); }
+.walk-nav { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--line); }
+.walk-return { position: fixed; right: var(--gutter); bottom: calc(var(--gutter) + 8px); z-index: 50; display: flex; align-items: center; gap: 4px; background: var(--surface); border: 1px solid var(--line-strong); padding: 6px; border-radius: var(--r-md); corner-shape: squircle; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3); }
+@media (max-width: 760px) {
+  .walkthrough { grid-template-columns: minmax(0, 1fr); }
+  .walk-index { position: static; flex-direction: row; overflow-x: auto; gap: 4px; padding-bottom: 4px; }
+  .walk-chapter { white-space: nowrap; }
+  .walk-return { bottom: 84px; }
+}
