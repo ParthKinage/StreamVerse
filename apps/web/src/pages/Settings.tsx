@@ -1,4 +1,6 @@
 import { useState, type FormEvent } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { Walkthrough } from './settings/Walkthrough';
 import { changePasswordSchema } from './settingsSchema';
 import { useAuth } from '../auth/AuthContext';
 import { usersApi } from '../api/endpoints';
@@ -6,7 +8,38 @@ import { Field } from '../components/Field';
 import { useToast } from '../components/Toasts';
 import { mapServerError, type FieldErrors } from '../lib/forms';
 
+type Tab = 'account' | 'walkthrough';
+
 export default function Settings(): JSX.Element {
+  const [params, setParams] = useSearchParams();
+  const tab: Tab = params.get('tab') === 'walkthrough' ? 'walkthrough' : 'account';
+  const tabs: Array<[Tab, string]> = [
+    ['account', 'Account'],
+    ['walkthrough', 'Walkthrough'],
+  ];
+  return (
+    <div className={tab === 'account' ? 'page narrow' : 'page'}>
+      <h1>Settings</h1>
+      <div className="tabs" role="tablist" aria-label="Settings sections">
+        {tabs.map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={tab === id}
+            className={tab === id ? 'tab active' : 'tab'}
+            onClick={() => setParams(id === 'account' ? {} : { tab: id }, { replace: true })}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {tab === 'account' ? <Account /> : <Walkthrough />}
+    </div>
+  );
+}
+
+function Account(): JSX.Element {
   const { user, setUser } = useAuth();
   const toast = useToast();
   const [username, setUsername] = useState(user?.username ?? '');
@@ -59,8 +92,7 @@ export default function Settings(): JSX.Element {
   };
 
   return (
-    <div className="page narrow">
-      <h1>Settings</h1>
+    <>
       <section className="card">
         <h2>Profile</h2>
         <p className="muted small">Signed in as {user?.email}</p>
@@ -86,6 +118,6 @@ export default function Settings(): JSX.Element {
           </button>
         </form>
       </section>
-    </div>
+    </>
   );
 }
